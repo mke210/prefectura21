@@ -54,6 +54,11 @@ input,select,textarea{font-family:inherit;}
   text-align:center;
 }
 .login-card .escudo{
+  width:84px;height:84px;object-fit:contain;
+  display:block;margin:0 auto 14px;
+  filter:drop-shadow(0 2px 6px rgba(2,30,78,.25));
+}
+.login-card .escudo-fallback{
   width:64px;height:64px;border-radius:50%;
   background:var(--azul-marino);
   display:flex;align-items:center;justify-content:center;
@@ -256,6 +261,20 @@ table.tbl tr:last-child td{border-bottom:none;}
 .badge.ok{background:#e7f7ee;color:var(--verde);}
 .badge.falta{background:#fdecea;color:var(--rojo);}
 
+.padre-row{
+  display:flex;align-items:center;gap:10px;padding:11px;border-radius:10px;margin-top:8px;
+  border:1.5px solid var(--gris-claro);
+}
+.padre-row .info{flex:1;min-width:0;}
+.padre-row .info .nombre{font-weight:700;font-size:13px;color:var(--azul-marino-deep);}
+.padre-row .info .meta{font-size:11.5px;color:var(--gris);margin-top:2px;}
+.padre-row .estado-badge{font-size:10.5px;font-weight:700;padding:4px 9px;border-radius:20px;white-space:nowrap;}
+.padre-row .estado-badge.si{background:#e7f7ee;color:var(--verde);}
+.padre-row .estado-badge.no{background:#fdecea;color:var(--rojo);}
+.padre-row .share-btn{
+  background:var(--azul-marino);color:var(--blanco);border:none;border-radius:8px;
+  padding:8px 10px;font-size:11px;font-weight:700;white-space:nowrap;
+}
 .empty-state{text-align:center;padding:30px 10px;color:var(--gris);font-size:13px;}
 .empty-state .icn{font-size:34px;margin-bottom:8px;}
 
@@ -288,7 +307,7 @@ table.tbl tr:last-child td{border-bottom:none;}
 <!-- ===================== LOGIN ===================== -->
 <div id="loginScreen">
   <div class="login-card">
-    <div class="escudo">🛡️</div>
+    <img class="escudo" src="escudo.png" alt="Escudo Escuela Secundaria General 21 de Noviembre" onerror="this.style.display='none'; this.insertAdjacentHTML('afterend','<div class=\'escudo-fallback\'>🛡️</div>');">
     <h1>Prefectura Escolar</h1>
     <p class="subt">Escuela Secundaria General<br>"21 de Noviembre"</p>
     <label for="prefectaSelect">Prefecta / Prefecto</label>
@@ -320,6 +339,7 @@ table.tbl tr:last-child td{border-bottom:none;}
     <button data-tab="registro" class="active">📷 Registro</button>
     <button data-tab="reportes">📋 Reportes</button>
     <button data-tab="dashboard">📊 Estadísticas</button>
+    <button data-tab="padres">👨‍👩‍👧 Padres</button>
     <button data-tab="ajustes">⚙️ Ajustes</button>
   </nav>
 
@@ -419,6 +439,33 @@ table.tbl tr:last-child td{border-bottom:none;}
       </div>
     </section>
 
+    <!-- ---------------- PADRES / TELEGRAM ---------------- -->
+    <section class="view" id="view-padres">
+      <div class="card">
+        <h2>Notificaciones a papás por Telegram</h2>
+        <p style="font-size:12.5px;color:var(--gris);margin-top:-6px;">
+          Cuando un papá vincula su Telegram con su hijo(a), recibe un mensaje automático
+          en cuanto se escanea el QR de entrada. El teléfono que aparece aquí es el que
+          ya está registrado en Credenciales (solo como referencia); Telegram usa el
+          enlace, no el número.
+        </p>
+        <div class="stat-grid" id="padresStatGrid" style="margin-top:12px;"></div>
+      </div>
+
+      <div class="card">
+        <div class="filters-row">
+          <select id="padresGrado"><option value="">Todos los grados</option><option value="1">1°</option><option value="2">2°</option><option value="3">3°</option></select>
+          <select id="padresEstado">
+            <option value="">Vinculados y sin vincular</option>
+            <option value="si">Solo vinculados</option>
+            <option value="no">Solo sin vincular</option>
+          </select>
+          <input type="text" id="padresBusca" placeholder="Buscar nombre o matrícula...">
+        </div>
+        <div class="list-scroll" id="padresList"></div>
+      </div>
+    </section>
+
     <!-- ---------------- AJUSTES ---------------- -->
     <section class="view" id="view-ajustes">
       <div class="card">
@@ -428,6 +475,16 @@ table.tbl tr:last-child td{border-bottom:none;}
           <input type="text" id="nuevaPrefectaInput" placeholder="Nombre completo">
           <button id="addPrefectaBtn">Agregar</button>
         </div>
+      </div>
+
+      <div class="card">
+        <h2>Bot de Telegram</h2>
+        <p style="font-size:12.5px;color:var(--gris);">Nombre de usuario de tu bot (el que te dio @BotFather, sin la @). Se usa para generar el enlace que los papás abren para vincularse.</p>
+        <div class="add-row">
+          <input type="text" id="botUsernameInput" placeholder="ej. Prefectura21NBot">
+          <button id="guardarBotUsernameBtn">Guardar</button>
+        </div>
+        <div class="settings-row"><span>Enlace de ejemplo</span><b id="botLinkPreview" style="font-size:11.5px;">—</b></div>
       </div>
 
       <div class="card">
@@ -534,13 +591,14 @@ table.tbl tr:last-child td{border-bottom:none;}
    de tu proyecto; falta apiKey, messagingSenderId y appId.
 ====================================================================== */
 const firebaseConfig = {
-  apiKey: "TU_API_KEY_AQUI",
+  apiKey: "AIzaSyA7Rj1FuPOpO5pMuSpMPuRiGIAr4sxkdWE",
   authDomain: "credenciales21-526be.firebaseapp.com",
   databaseURL: "https://credenciales21-526be-default-rtdb.firebaseio.com",
   projectId: "credenciales21-526be",
-  storageBucket: "credenciales21-526be.appspot.com",
-  messagingSenderId: "TU_SENDER_ID_AQUI",
-  appId: "TU_APP_ID_AQUI"
+  storageBucket: "credenciales21-526be.firebasestorage.app",
+  messagingSenderId: "816617255445",
+  appId: "1:816617255445:web:6d3a1f587c9dbab381141c",
+  measurementId: "G-9N5N1DGYFS"
 };
 
 firebase.initializeApp(firebaseConfig);
@@ -563,6 +621,8 @@ let currentAlumno = null; // alumno actualmente mostrado en tarjeta de resultado
 let asistenciaHoyCache = {};
 let salidasHoyCache = {};
 let reportesCache = {};
+let telegramLinks = {};   // { matricula: {chatId, telegramUser, vinculadoEn} }
+let botUsername = "";     // usuario del bot de Telegram (sin @)
 
 const $ = (id) => document.getElementById(id);
 
@@ -629,12 +689,34 @@ function loadPrefecturaConfig(){
     const cfg = snap.val() || {};
     prefectas = cfg.prefectas || [];
     pin = cfg.pin || "2024";
+    botUsername = cfg.telegramBotUsername || "";
     if(prefectas.length===0){
       prefectas = ["Prefecta 1"];
     }
     renderPrefectaSelect();
     renderPrefectasTags();
+    if($('botUsernameInput')) $('botUsernameInput').value = botUsername;
+    updateBotLinkPreview();
   });
+}
+
+function loadTelegramLinks(){
+  db.ref('prefectura/telegram').on('value', snap=>{
+    telegramLinks = snap.val() || {};
+    if($('view-padres') && $('view-padres').classList.contains('active')) renderPadresTab();
+    if($('view-dashboard') && $('view-dashboard').classList.contains('active')) renderDashboard();
+  });
+}
+
+function telegramLink(matricula){
+  if(!botUsername) return null;
+  return `https://t.me/${botUsername}?start=${encodeURIComponent(matricula)}`;
+}
+
+function updateBotLinkPreview(){
+  const el = $('botLinkPreview');
+  if(!el) return;
+  el.textContent = botUsername ? `https://t.me/${botUsername}?start=2024001` : 'Configura el usuario del bot arriba';
 }
 
 /* ======================================================================
@@ -679,6 +761,7 @@ document.querySelectorAll('nav.tabs button').forEach(btn=>{
     $('view-'+tab).classList.add('active');
     if(tab==='dashboard') renderDashboard();
     if(tab==='reportes') renderReportesTab();
+    if(tab==='padres') renderPadresTab();
     if(tab==='registro'){ /* camera stays as-is */ }
     else { /* stop camera when leaving registro to save battery */ }
   });
@@ -696,6 +779,7 @@ function initAppUI(){
   watchAsistenciaHoy();
   watchSalidasHoy();
   watchReportesHoy();
+  loadTelegramLinks();
   renderDashboard();
 }
 
@@ -1139,6 +1223,81 @@ function renderSalidasListData(salidas){
       </div>
     </div>`).join('');
 }
+
+/* ======================================================================
+   VISTA: PADRES / TELEGRAM
+====================================================================== */
+function renderPadresTab(){
+  const allStudents = Object.values(studentsByMatricula);
+  const gradoF = $('padresGrado').value;
+  const estadoF = $('padresEstado').value;
+  const buscaF = $('padresBusca').value.trim().toLowerCase();
+
+  const totalVinculados = allStudents.filter(s=>telegramLinks[s.matricula]).length;
+  $('padresStatGrid').innerHTML = `
+    <div class="stat-box accent"><div class="num">${totalVinculados}</div><div class="lbl">Vinculados a Telegram</div></div>
+    <div class="stat-box warn"><div class="num">${allStudents.length-totalVinculados}</div><div class="lbl">Sin vincular</div></div>`;
+
+  const filtered = allStudents.filter(s=>{
+    const vinculado = !!telegramLinks[s.matricula];
+    if(gradoF && String(s.grado)!==gradoF) return false;
+    if(estadoF==='si' && !vinculado) return false;
+    if(estadoF==='no' && vinculado) return false;
+    if(buscaF && !(String(s.nombre).toLowerCase().includes(buscaF) || String(s.matricula).includes(buscaF))) return false;
+    return true;
+  }).sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre)));
+
+  const list = $('padresList');
+  if(filtered.length===0){
+    list.innerHTML = `<div class="empty-state"><div class="icn">👨‍👩‍👧</div>Sin alumnos para este filtro.</div>`;
+    return;
+  }
+  list.innerHTML = filtered.map(s=>{
+    const vinculado = !!telegramLinks[s.matricula];
+    return `
+    <div class="padre-row">
+      <div class="info">
+        <div class="nombre">${escapeHtml(s.nombre)}</div>
+        <div class="meta">${escapeHtml(s.grado)}°${escapeHtml(s.grupo)} · Mat. ${escapeHtml(s.matricula)}${s.telefono?` · Tel. ${escapeHtml(s.telefono)}`:''}</div>
+      </div>
+      <span class="estado-badge ${vinculado?'si':'no'}">${vinculado?'Vinculado':'Sin vincular'}</span>
+      ${vinculado?'':`<button class="share-btn" data-mat="${escapeHtml(s.matricula)}">Compartir enlace</button>`}
+    </div>`;
+  }).join('');
+  list.querySelectorAll('.share-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>shareTelegramLink(btn.dataset.mat));
+  });
+}
+$('padresGrado').addEventListener('input', renderPadresTab);
+$('padresEstado').addEventListener('input', renderPadresTab);
+$('padresBusca').addEventListener('input', renderPadresTab);
+
+function shareTelegramLink(matricula){
+  const link = telegramLink(matricula);
+  if(!link){
+    showToast('Primero configura el usuario del bot en Ajustes.', 3500);
+    return;
+  }
+  const alumno = studentsByMatricula[matricula];
+  const texto = `Hola, para recibir un aviso por Telegram cuando ${alumno ? alumno.nombre : 'tu hijo(a)'} entre a la escuela, abre este enlace y presiona "Iniciar": ${link}`;
+  if(navigator.share){
+    navigator.share({title:'Vincular Telegram', text:texto, url:link}).catch(()=>{});
+  } else {
+    navigator.clipboard.writeText(texto).then(()=>{
+      showToast('Enlace copiado. Pégalo en WhatsApp para enviárselo al papá.', 3200);
+    }).catch(()=>{
+      showToast(link, 4000);
+    });
+  }
+}
+
+$('guardarBotUsernameBtn').addEventListener('click', ()=>{
+  const val = $('botUsernameInput').value.trim().replace(/^@/,'');
+  if(!val){ showToast('Escribe el usuario del bot.'); return; }
+  db.ref('prefectura/config/telegramBotUsername').set(val).then(()=>{
+    showToast('Usuario del bot guardado.');
+  });
+});
 
 /* ======================================================================
    AJUSTES
