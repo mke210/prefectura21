@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Prefectura · Escuela Secundaria General 21 de Noviembre</title>
+<link rel="manifest" id="manifestLink">
+<meta name="theme-color" content="#0B2D6B">
+<style>
+:root{
+  --azul-marino:#0B2D6B;
+  --azul-marino-deep:#021e4e;
+  --azul-cielo:#a5d2e5;
+  --azul-cielo-pale:#eaf6fb;
+  --blanco:#ffffff;
+  --gris:#64748b;
+  --gris-claro:#e2e8f0;
+  --rojo:#c0392b;
+  --verde:#1f8a55;
+  --amarillo:#c9a227;
+  --sombra:0 4px 14px rgba(2,30,78,.12);
+  --radius:14px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;height:100%;}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;
+  background:var(--azul-cielo-pale);
+  color:var(--azul-marino-deep);
+  -webkit-tap-highlight-color:transparent;
+  overscroll-behavior:none;
+}
+button{font-family:inherit;cursor:pointer;}
+input,select,textarea{font-family:inherit;}
+::-webkit-scrollbar{width:8px;height:8px;}
+::-webkit-scrollbar-thumb{background:var(--azul-cielo);border-radius:8px;}
+
+/* ---------- LOGIN ---------- */
+#loginScreen{
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:linear-gradient(160deg,var(--azul-marino) 0%,var(--azul-marino-deep) 100%);
+  padding:24px;
+}
+.login-card{
+  background:var(--blanco);
+  border-radius:var(--radius);
+  box-shadow:0 12px 40px rgba(0,0,0,.35);
+  width:100%;
+  max-width:380px;
+  padding:32px 28px;
+  text-align:center;
+}
+.login-card .escudo{
+  width:64px;height:64px;border-radius:50%;
+  background:var(--azul-marino);
+  display:flex;align-items:center;justify-content:center;
+  margin:0 auto 14px;
+  font-size:28px;color:var(--blanco);
+}
+.login-card h1{font-size:17px;margin:0 0 2px;color:var(--azul-marino-deep);}
+.login-card p.subt{font-size:12.5px;color:var(--gris);margin:0 0 22px;}
+.login-card label{display:block;text-align:left;font-size:12px;font-weight:600;color:var(--azul-marino);margin:14px 0 5px;}
+.login-card input,.login-card select{
+  width:100%;padding:12px 14px;border-radius:10px;border:1.5px solid var(--gris-claro);
+  font-size:15px;outline:none;transition:border .15s;
+}
+.login-card input:focus,.login-card select:focus{border-color:var(--azul-marino);}
+.login-btn{
+  width:100%;margin-top:20px;padding:13px;border:none;border-radius:10px;
+  background:var(--azul-marino);color:var(--blanco);font-size:15px;font-weight:700;
+  transition:background .15s;
+}
+.login-btn:active{background:var(--azul-marino-deep);}
+.login-err{color:var(--rojo);font-size:12.5px;margin-top:10px;min-height:16px;}
+
+/* ---------- APP SHELL ---------- */
+#app{display:none;min-height:100vh;flex-direction:column;}
+#app.active{display:flex;}
+header.topbar{
+  background:var(--azul-marino);
+  color:var(--blanco);
+  padding:12px 16px;
+  display:flex;align-items:center;justify-content:space-between;
+  box-shadow:var(--sombra);
+  position:sticky;top:0;z-index:50;
+}
+header.topbar .brand{display:flex;align-items:center;gap:10px;min-width:0;}
+header.topbar .brand .esc{width:34px;height:34px;border-radius:50%;background:var(--azul-cielo);color:var(--azul-marino-deep);display:flex;align-items:center;justify-content:center;font-weight:800;flex-shrink:0;font-size:14px;}
+header.topbar .brand .txt{min-width:0;}
+header.topbar .brand .txt b{display:block;font-size:13px;line-height:1.2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+header.topbar .brand .txt span{font-size:11px;color:var(--azul-cielo);}
+header.topbar .right{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+header.topbar .userbadge{font-size:11.5px;background:rgba(255,255,255,.12);padding:5px 10px;border-radius:20px;white-space:nowrap;}
+header.topbar .logout{background:none;border:none;color:var(--azul-cielo);font-size:11.5px;text-decoration:underline;}
+
+nav.tabs{
+  display:flex;overflow-x:auto;background:var(--blanco);
+  border-bottom:1px solid var(--gris-claro);
+  position:sticky;top:53px;z-index:40;
+  -webkit-overflow-scrolling:touch;
+}
+nav.tabs button{
+  flex:1;min-width:78px;background:none;border:none;padding:11px 6px;
+  font-size:11.5px;font-weight:600;color:var(--gris);
+  border-bottom:3px solid transparent;white-space:nowrap;
+}
+nav.tabs button.active{color:var(--azul-marino);border-bottom-color:var(--azul-marino);}
+
+main{flex:1;padding:16px;max-width:900px;width:100%;margin:0 auto;padding-bottom:60px;}
+.view{display:none;}
+.view.active{display:block;animation:fadeIn .18s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(4px);}to{opacity:1;transform:none;}}
+
+.card{background:var(--blanco);border-radius:var(--radius);box-shadow:var(--sombra);padding:18px;margin-bottom:14px;}
+.card h2{font-size:15px;margin:0 0 12px;color:var(--azul-marino-deep);}
+.card h3{font-size:13px;margin:0 0 8px;color:var(--azul-marino);}
+
+/* ---------- SCANNER ---------- */
+.scan-modeswitch{display:flex;gap:8px;margin-bottom:12px;}
+.scan-modeswitch button{
+  flex:1;padding:10px;border-radius:10px;border:1.5px solid var(--azul-cielo);
+  background:var(--blanco);color:var(--azul-marino);font-weight:700;font-size:12.5px;
+}
+.scan-modeswitch button.active{background:var(--azul-marino);color:var(--blanco);border-color:var(--azul-marino);}
+
+.camera-wrap{
+  position:relative;width:100%;aspect-ratio:1/1;max-width:420px;margin:0 auto;
+  border-radius:var(--radius);overflow:hidden;background:#000;
+}
+.camera-wrap video{width:100%;height:100%;object-fit:cover;}
+.camera-frame{
+  position:absolute;inset:12%;border:3px solid var(--azul-cielo);border-radius:16px;
+  box-shadow:0 0 0 2000px rgba(0,0,0,.28);pointer-events:none;
+}
+.camera-off{
+  position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:var(--azul-cielo);text-align:center;padding:20px;gap:10px;
+}
+.camera-off button{padding:10px 20px;border:none;border-radius:10px;background:var(--azul-cielo);color:var(--azul-marino-deep);font-weight:700;}
+
+.manual-search{margin-top:14px;}
+.manual-search input{
+  width:100%;padding:11px 14px;border-radius:10px;border:1.5px solid var(--gris-claro);font-size:14px;
+}
+.suggestions{margin-top:6px;max-height:220px;overflow-y:auto;border-radius:10px;}
+.suggestion-item{
+  padding:10px 12px;border-bottom:1px solid var(--gris-claro);display:flex;justify-content:space-between;
+  align-items:center;background:var(--blanco);font-size:13px;
+}
+.suggestion-item:hover,.suggestion-item:active{background:var(--azul-cielo-pale);}
+.suggestion-item small{color:var(--gris);}
+
+.alumno-result{
+  margin-top:14px;border-radius:var(--radius);padding:16px;display:flex;gap:14px;align-items:center;
+  animation:fadeIn .2s ease;
+}
+.alumno-result.ok{background:#e7f7ee;border:1.5px solid var(--verde);}
+.alumno-result.warn{background:#fff8e6;border:1.5px solid var(--amarillo);}
+.alumno-result.err{background:#fdecea;border:1.5px solid var(--rojo);}
+.alumno-result img.foto{width:64px;height:64px;border-radius:10px;object-fit:cover;background:var(--gris-claro);flex-shrink:0;}
+.alumno-result .info{flex:1;min-width:0;}
+.alumno-result .info .nombre{font-weight:800;font-size:15px;color:var(--azul-marino-deep);}
+.alumno-result .info .meta{font-size:12px;color:var(--gris);margin-top:2px;}
+.alumno-result .info .estado{font-size:12.5px;font-weight:700;margin-top:5px;}
+.ok .estado{color:var(--verde);}
+.warn .estado{color:#a67c00;}
+.err .estado{color:var(--rojo);}
+
+.quick-actions{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;}
+.quick-actions button{
+  flex:1;min-width:140px;padding:10px;border-radius:10px;border:1.5px solid var(--azul-marino);
+  background:var(--blanco);color:var(--azul-marino);font-weight:700;font-size:12.5px;
+}
+.quick-actions button.primary{background:var(--azul-marino);color:var(--blanco);}
+.quick-actions button.danger{border-color:var(--rojo);color:var(--rojo);}
+
+/* ---------- Reportero (quien registra) ---------- */
+.prefecta-select{margin-bottom:12px;}
+.prefecta-select label{font-size:12px;font-weight:700;color:var(--azul-marino);display:block;margin-bottom:5px;}
+.prefecta-select select{width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--gris-claro);font-size:13.5px;}
+
+/* ---------- MODALS ---------- */
+.modal-overlay{
+  display:none;position:fixed;inset:0;background:rgba(2,30,78,.55);z-index:100;
+  align-items:flex-end;justify-content:center;
+}
+.modal-overlay.active{display:flex;}
+.modal-box{
+  background:var(--blanco);width:100%;max-width:480px;border-radius:18px 18px 0 0;
+  padding:20px;max-height:88vh;overflow-y:auto;animation:slideUp .2s ease;
+}
+@media(min-width:640px){
+  .modal-overlay{align-items:center;}
+  .modal-box{border-radius:18px;}
+}
+@keyframes slideUp{from{transform:translateY(30px);opacity:0;}to{transform:none;opacity:1;}}
+.modal-box h3{margin:0 0 4px;font-size:16px;color:var(--azul-marino-deep);}
+.modal-box .sub{font-size:12.5px;color:var(--gris);margin-bottom:16px;}
+.modal-close{float:right;background:none;border:none;font-size:20px;color:var(--gris);}
+
+.check-grid{display:flex;flex-direction:column;gap:8px;margin-bottom:12px;}
+.check-item{
+  display:flex;align-items:center;gap:10px;padding:11px 12px;border:1.5px solid var(--gris-claro);
+  border-radius:10px;font-size:13.5px;
+}
+.check-item input{width:18px;height:18px;accent-color:var(--azul-marino);flex-shrink:0;}
+.check-item.checked{border-color:var(--azul-marino);background:var(--azul-cielo-pale);}
+.sub-options{margin:6px 0 6px 28px;display:none;flex-direction:column;gap:6px;}
+.sub-options.show{display:flex;}
+.sub-options label{font-size:12.5px;display:flex;align-items:center;gap:6px;color:var(--gris);}
+
+textarea.notas{
+  width:100%;padding:10px;border-radius:10px;border:1.5px solid var(--gris-claro);font-size:13px;
+  min-height:60px;resize:vertical;
+}
+.chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;}
+.chip{
+  padding:9px 14px;border-radius:20px;border:1.5px solid var(--gris-claro);font-size:12.5px;color:var(--gris);
+  background:var(--blanco);
+}
+.chip.selected{border-color:var(--azul-marino);background:var(--azul-marino);color:var(--blanco);}
+
+.modal-actions{display:flex;gap:10px;margin-top:16px;}
+.modal-actions button{flex:1;padding:12px;border-radius:10px;border:none;font-weight:700;font-size:13.5px;}
+.btn-cancel{background:var(--gris-claro);color:var(--gris);}
+.btn-save{background:var(--azul-marino);color:var(--blanco);}
+
+/* ---------- DASHBOARD ---------- */
+.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px;}
+@media(min-width:560px){.stat-grid{grid-template-columns:repeat(4,1fr);}}
+.stat-box{background:var(--blanco);border-radius:12px;padding:14px;box-shadow:var(--sombra);text-align:center;}
+.stat-box .num{font-size:24px;font-weight:800;color:var(--azul-marino-deep);}
+.stat-box .lbl{font-size:11px;color:var(--gris);margin-top:2px;}
+.stat-box.accent .num{color:var(--verde);}
+.stat-box.warn .num{color:var(--rojo);}
+
+.datepick{display:flex;align-items:center;gap:8px;margin-bottom:14px;}
+.datepick input{padding:9px 12px;border-radius:10px;border:1.5px solid var(--gris-claro);font-size:13px;}
+.datepick button{padding:9px 14px;border-radius:10px;border:1.5px solid var(--azul-marino);background:var(--blanco);color:var(--azul-marino);font-size:12.5px;font-weight:700;}
+
+.filters-row{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.filters-row select,.filters-row input{
+  padding:8px 10px;border-radius:8px;border:1.5px solid var(--gris-claro);font-size:12.5px;flex:1;min-width:100px;
+}
+
+table.tbl{width:100%;border-collapse:collapse;font-size:12.5px;}
+table.tbl th{background:var(--azul-cielo-pale);color:var(--azul-marino-deep);text-align:left;padding:8px;font-size:11px;text-transform:uppercase;letter-spacing:.3px;}
+table.tbl td{padding:8px;border-bottom:1px solid var(--gris-claro);}
+table.tbl tr:last-child td{border-bottom:none;}
+.badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:10.5px;font-weight:700;}
+.badge.matutino{background:#fff4d6;color:#8a6300;}
+.badge.mixto{background:#dceefb;color:#0B2D6B;}
+.badge.ok{background:#e7f7ee;color:var(--verde);}
+.badge.falta{background:#fdecea;color:var(--rojo);}
+
+.empty-state{text-align:center;padding:30px 10px;color:var(--gris);font-size:13px;}
+.empty-state .icn{font-size:34px;margin-bottom:8px;}
+
+.list-scroll{max-height:420px;overflow-y:auto;}
+
+/* ---------- Ajustes ---------- */
+.settings-row{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--gris-claro);}
+.settings-row:last-child{border-bottom:none;}
+.tag-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;}
+.tag{background:var(--azul-cielo-pale);color:var(--azul-marino-deep);padding:6px 10px;border-radius:20px;font-size:12px;display:flex;align-items:center;gap:6px;}
+.tag button{background:none;border:none;color:var(--rojo);font-weight:800;font-size:13px;padding:0;}
+.add-row{display:flex;gap:8px;margin-top:10px;}
+.add-row input{flex:1;padding:9px 12px;border-radius:10px;border:1.5px solid var(--gris-claro);font-size:13px;}
+.add-row button{padding:9px 16px;border-radius:10px;border:none;background:var(--azul-marino);color:var(--blanco);font-weight:700;font-size:12.5px;}
+
+.toast{
+  position:fixed;bottom:24px;left:50%;transform:translateX(-50%);
+  background:var(--azul-marino-deep);color:var(--blanco);padding:12px 20px;border-radius:10px;
+  font-size:13px;box-shadow:0 6px 20px rgba(0,0,0,.3);z-index:200;opacity:0;pointer-events:none;
+  transition:opacity .25s,transform .25s;max-width:90vw;text-align:center;
+}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(-6px);}
+
+.spinner{width:16px;height:16px;border:2.5px solid rgba(255,255,255,.4);border-top-color:#fff;border-radius:50%;display:inline-block;animation:spin .7s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg);}}
+</style>
+</head>
+<body>
+
+<!-- ===================== LOGIN ===================== -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="escudo">🛡️</div>
+    <h1>Prefectura Escolar</h1>
+    <p class="subt">Escuela Secundaria General<br>"21 de Noviembre"</p>
+    <label for="prefectaSelect">Prefecta / Prefecto</label>
+    <select id="prefectaSelect"></select>
+    <label for="pinInput">Contraseña de acceso</label>
+    <input type="password" id="pinInput" placeholder="••••••" inputmode="numeric">
+    <button class="login-btn" id="loginBtn">Ingresar</button>
+    <div class="login-err" id="loginErr"></div>
+  </div>
+</div>
+
+<!-- ===================== APP ===================== -->
+<div id="app">
+  <header class="topbar">
+    <div class="brand">
+      <div class="esc">21N</div>
+      <div class="txt">
+        <b>Sec. Gral. "21 de Noviembre"</b>
+        <span id="fechaHoyTop"></span>
+      </div>
+    </div>
+    <div class="right">
+      <span class="userbadge" id="userBadge"></span>
+      <button class="logout" id="logoutBtn">Salir</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button data-tab="registro" class="active">📷 Registro</button>
+    <button data-tab="reportes">📋 Reportes</button>
+    <button data-tab="dashboard">📊 Estadísticas</button>
+    <button data-tab="ajustes">⚙️ Ajustes</button>
+  </nav>
+
+  <main>
+
+    <!-- ---------------- REGISTRO ---------------- -->
+    <section class="view active" id="view-registro">
+      <div class="card">
+        <div class="scan-modeswitch">
+          <button id="modeEntrada" class="active">✅ Registrar Entrada</button>
+          <button id="modeSalida">🚪 Registrar Salida</button>
+        </div>
+
+        <div class="camera-wrap" id="cameraWrap">
+          <video id="video" playsinline muted></video>
+          <div class="camera-frame"></div>
+          <div class="camera-off" id="cameraOff" style="display:none;">
+            <div>📷 Cámara desactivada</div>
+            <button id="startCamBtn">Activar cámara</button>
+          </div>
+        </div>
+        <canvas id="canvas" style="display:none;"></canvas>
+
+        <div class="manual-search">
+          <input type="text" id="manualInput" placeholder="Buscar por nombre o matrícula...">
+          <div class="suggestions" id="suggestions"></div>
+        </div>
+
+        <div id="alumnoResultWrap"></div>
+      </div>
+    </section>
+
+    <!-- ---------------- REPORTES ---------------- -->
+    <section class="view" id="view-reportes">
+      <div class="card">
+        <h2>Reportes del día</h2>
+        <div class="datepick">
+          <input type="date" id="reportesDate">
+          <button id="reportesHoyBtn">Hoy</button>
+        </div>
+        <div class="filters-row">
+          <select id="repFiltroTipo">
+            <option value="">Todos los tipos</option>
+            <option value="cabello">Corte de cabello</option>
+            <option value="maquillaje">Maquillaje</option>
+            <option value="zapatos">Zapatos sucios</option>
+            <option value="uniforme">Uniforme incorrecto</option>
+            <option value="credencial">Sin credencial</option>
+          </select>
+          <select id="repFiltroGrado">
+            <option value="">Todos los grados</option>
+            <option value="1">1°</option><option value="2">2°</option><option value="3">3°</option>
+          </select>
+        </div>
+        <div class="list-scroll" id="reportesList"></div>
+      </div>
+    </section>
+
+    <!-- ---------------- DASHBOARD ---------------- -->
+    <section class="view" id="view-dashboard">
+      <div class="card">
+        <h2>Estadísticas</h2>
+        <div class="datepick">
+          <input type="date" id="dashDate">
+          <button id="dashHoyBtn">Hoy</button>
+        </div>
+        <div class="stat-grid" id="statGrid"></div>
+      </div>
+
+      <div class="card">
+        <h3>Asistencia por grado y grupo</h3>
+        <div class="filters-row">
+          <select id="dashTurno">
+            <option value="">Ambos turnos</option>
+            <option value="Matutino">Matutino</option>
+            <option value="Mixto">Mixto</option>
+          </select>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="tbl" id="tablaGradoGrupo"></table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Alumnos que no llegaron</h3>
+        <div class="filters-row">
+          <select id="faltasGrado"><option value="">Todos los grados</option><option value="1">1°</option><option value="2">2°</option><option value="3">3°</option></select>
+          <select id="faltasTurno"><option value="">Ambos turnos</option><option value="Matutino">Matutino</option><option value="Mixto">Mixto</option></select>
+          <input type="text" id="faltasBusca" placeholder="Buscar nombre...">
+        </div>
+        <div class="list-scroll" id="faltasList"></div>
+      </div>
+
+      <div class="card">
+        <h3>Salidas anticipadas del día</h3>
+        <div class="list-scroll" id="salidasList"></div>
+      </div>
+    </section>
+
+    <!-- ---------------- AJUSTES ---------------- -->
+    <section class="view" id="view-ajustes">
+      <div class="card">
+        <h2>Prefectas / Prefectos</h2>
+        <div class="tag-list" id="prefectasTags"></div>
+        <div class="add-row">
+          <input type="text" id="nuevaPrefectaInput" placeholder="Nombre completo">
+          <button id="addPrefectaBtn">Agregar</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Contraseña de acceso</h2>
+        <div class="add-row">
+          <input type="password" id="nuevoPinInput" placeholder="Nueva contraseña">
+          <button id="cambiarPinBtn">Guardar</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Conexión Firebase</h2>
+        <p style="font-size:12.5px;color:var(--gris);">Esta app usa el mismo proyecto Firebase que Credenciales Escolares para leer los datos de alumnos (nodo <code>students</code>). Los registros de prefectura se guardan en un nodo separado <code>/prefectura/</code> y no modifican los datos de credenciales.</p>
+        <div class="settings-row"><span>Proyecto</span><b id="fbProjectLabel">—</b></div>
+        <div class="settings-row"><span>Alumnos cargados</span><b id="fbCountLabel">—</b></div>
+      </div>
+
+      <div class="card">
+        <h2>Exportar</h2>
+        <button class="quick-actions" style="display:block;width:100%;padding:12px;border:1.5px solid var(--azul-marino);border-radius:10px;background:var(--blanco);color:var(--azul-marino);font-weight:700;" id="exportCsvBtn">⬇️ Exportar asistencia del día (CSV)</button>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ===================== MODAL: REPORTE ===================== -->
+<div class="modal-overlay" id="modalReporte">
+  <div class="modal-box">
+    <button class="modal-close" id="closeModalReporte">&times;</button>
+    <h3>Nuevo reporte</h3>
+    <div class="sub" id="modalReporteAlumno"></div>
+
+    <div class="check-grid">
+      <label class="check-item" data-tipo="cabello">
+        <input type="checkbox" value="cabello"> Corte de cabello inadecuado
+      </label>
+      <label class="check-item" data-tipo="maquillaje">
+        <input type="checkbox" value="maquillaje"> Maquillaje
+      </label>
+      <label class="check-item" data-tipo="zapatos">
+        <input type="checkbox" value="zapatos"> Zapatos sucios
+      </label>
+      <label class="check-item" data-tipo="uniforme">
+        <input type="checkbox" value="uniforme"> Uniforme incorrecto
+      </label>
+      <div class="sub-options" id="uniformeSub">
+        <label><input type="radio" name="uniformeTipo" value="llevo_ed_fisica"> Llevó uniforme de Ed. Física (correspondía diario)</label>
+        <label><input type="radio" name="uniformeTipo" value="llevo_diario"> Llevó uniforme de diario (correspondía Ed. Física)</label>
+        <label><input type="radio" name="uniformeTipo" value="otro"> Otro</label>
+      </div>
+      <label class="check-item" data-tipo="credencial">
+        <input type="checkbox" value="credencial"> No trajo credencial (se le permitió el ingreso)
+      </label>
+    </div>
+
+    <textarea class="notas" id="reporteNotas" placeholder="Notas adicionales (opcional)"></textarea>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" id="cancelReporte">Cancelar</button>
+      <button class="btn-save" id="guardarReporte">Guardar reporte</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MODAL: SALIDA ===================== -->
+<div class="modal-overlay" id="modalSalida">
+  <div class="modal-box">
+    <button class="modal-close" id="closeModalSalida">&times;</button>
+    <h3>Registrar salida anticipada</h3>
+    <div class="sub" id="modalSalidaAlumno"></div>
+
+    <div class="chip-row" id="motivoChips">
+      <div class="chip" data-motivo="Se sintió mal">Se sintió mal</div>
+      <div class="chip" data-motivo="Actividad con papás">Actividad con papás</div>
+      <div class="chip" data-motivo="Cita médica">Cita médica</div>
+      <div class="chip" data-motivo="Otro">Otro</div>
+    </div>
+
+    <textarea class="notas" id="salidaNotas" placeholder="Notas adicionales (opcional)"></textarea>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" id="cancelSalida">Cancelar</button>
+      <button class="btn-save" id="guardarSalida">Registrar salida</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- ===================== FIREBASE ===================== -->
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-database-compat.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
+
+<script>
+/* ======================================================================
+   CONFIGURACIÓN FIREBASE
+   ⚠️ IMPORTANTE: reemplaza estos valores con los de tu proyecto
+   "credenciales21-526be" (los mismos que usa la app de Credenciales).
+   Los encuentras en: Firebase Console → ⚙️ Configuración del proyecto
+   → tus apps → Config del SDK.
+   El databaseURL y projectId ya están puestos porque los conocemos
+   de tu proyecto; falta apiKey, messagingSenderId y appId.
+====================================================================== */
+const firebaseConfig = {
+  apiKey: "TU_API_KEY_AQUI",
+  authDomain: "credenciales21-526be.firebaseapp.com",
+  databaseURL: "https://credenciales21-526be-default-rtdb.firebaseio.com",
+  projectId: "credenciales21-526be",
+  storageBucket: "credenciales21-526be.appspot.com",
+  messagingSenderId: "TU_SENDER_ID_AQUI",
+  appId: "TU_APP_ID_AQUI"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* ======================================================================
+   ESTADO GLOBAL
+====================================================================== */
+let students = {};        // { firebaseKey: {...} }  -- solo lectura
+let studentsByMatricula = {}; // { matricula: {...} }
+let prefectas = [];
+let pin = "2024";
+let prefectaActual = "";
+let scanMode = "entrada"; // 'entrada' | 'salida'
+let videoStream = null;
+let scanLoopActive = false;
+let lastScanCode = null;
+let lastScanTime = 0;
+let currentAlumno = null; // alumno actualmente mostrado en tarjeta de resultado
+let asistenciaHoyCache = {};
+let salidasHoyCache = {};
+let reportesCache = {};
+
+const $ = (id) => document.getElementById(id);
+
+/* ======================================================================
+   UTILIDADES
+====================================================================== */
+function getFecha(offsetDays=0){
+  const d = new Date();
+  d.setDate(d.getDate()+offsetDays);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function getHoraActual(){
+  return new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'});
+}
+function showToast(msg, ms=2600){
+  const t = $('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  clearTimeout(t._timer);
+  t._timer = setTimeout(()=>t.classList.remove('show'), ms);
+}
+function beep(success=true){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.connect(g); g.connect(ctx.destination);
+    o.type='sine';
+    o.frequency.value = success ? 880 : 300;
+    g.gain.setValueAtTime(0.15, ctx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (success?0.18:0.35));
+    o.start();
+    o.stop(ctx.currentTime + (success?0.18:0.35));
+  }catch(e){}
+}
+function escapeHtml(s){
+  if(s===undefined||s===null) return '';
+  return String(s).replace(/[&<>"']/g, m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+/* ======================================================================
+   CARGA DE DATOS (lectura de /students, lectura/escritura de /prefectura)
+====================================================================== */
+function loadStudents(){
+  db.ref('students').on('value', snap=>{
+    const val = snap.val() || {};
+    students = val;
+    studentsByMatricula = {};
+    Object.keys(val).forEach(key=>{
+      const s = val[key];
+      const mat = String(s.matricula || s.id || key);
+      studentsByMatricula[mat] = Object.assign({_key:key}, s);
+    });
+    $('fbCountLabel').textContent = Object.keys(studentsByMatricula).length;
+    if(document.getElementById('view-dashboard').classList.contains('active')) renderDashboard();
+  }, err=>{
+    console.error(err);
+    showToast('No se pudo conectar a Firebase. Revisa la configuración en Ajustes.', 4000);
+  });
+}
+
+function loadPrefecturaConfig(){
+  db.ref('prefectura/config').on('value', snap=>{
+    const cfg = snap.val() || {};
+    prefectas = cfg.prefectas || [];
+    pin = cfg.pin || "2024";
+    if(prefectas.length===0){
+      prefectas = ["Prefecta 1"];
+    }
+    renderPrefectaSelect();
+    renderPrefectasTags();
+  });
+}
+
+/* ======================================================================
+   LOGIN
+====================================================================== */
+function renderPrefectaSelect(){
+  const sel = $('prefectaSelect');
+  sel.innerHTML = prefectas.map(p=>`<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+}
+
+$('loginBtn').addEventListener('click', ()=>{
+  const val = $('pinInput').value.trim();
+  if(val !== pin){
+    $('loginErr').textContent = 'Contraseña incorrecta.';
+    return;
+  }
+  prefectaActual = $('prefectaSelect').value;
+  sessionStorage.setItem('prefectura_activa', prefectaActual);
+  $('loginScreen').style.display='none';
+  $('app').classList.add('active');
+  $('userBadge').textContent = prefectaActual;
+  initAppUI();
+});
+
+$('logoutBtn').addEventListener('click', ()=>{
+  stopCamera();
+  sessionStorage.removeItem('prefectura_activa');
+  $('app').classList.remove('active');
+  $('loginScreen').style.display='flex';
+  $('pinInput').value='';
+});
+
+/* ======================================================================
+   TABS
+====================================================================== */
+document.querySelectorAll('nav.tabs button').forEach(btn=>{
+  btn.addEventListener('click', ()=>{
+    document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+    const tab = btn.dataset.tab;
+    $('view-'+tab).classList.add('active');
+    if(tab==='dashboard') renderDashboard();
+    if(tab==='reportes') renderReportesTab();
+    if(tab==='registro'){ /* camera stays as-is */ }
+    else { /* stop camera when leaving registro to save battery */ }
+  });
+});
+
+/* ======================================================================
+   INIT UI (tras login)
+====================================================================== */
+function initAppUI(){
+  $('fechaHoyTop').textContent = new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'});
+  $('fbProjectLabel').textContent = firebaseConfig.projectId;
+  $('reportesDate').value = getFecha();
+  $('dashDate').value = getFecha();
+  startCamera();
+  watchAsistenciaHoy();
+  watchSalidasHoy();
+  watchReportesHoy();
+  renderDashboard();
+}
+
+/* ======================================================================
+   CÁMARA Y ESCANEO QR
+====================================================================== */
+async function startCamera(){
+  try{
+    videoStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    const video = $('video');
+    video.srcObject = videoStream;
+    await video.play();
+    $('cameraOff').style.display='none';
+    scanLoopActive = true;
+    requestAnimationFrame(scanLoop);
+  }catch(e){
+    console.error(e);
+    $('cameraOff').style.display='flex';
+  }
+}
+function stopCamera(){
+  scanLoopActive = false;
+  if(videoStream){
+    videoStream.getTracks().forEach(t=>t.stop());
+    videoStream = null;
+  }
+}
+$('startCamBtn').addEventListener('click', startCamera);
+
+function scanLoop(){
+  if(!scanLoopActive) return;
+  const video = $('video');
+  const canvas = $('canvas');
+  if(video.readyState === video.HAVE_ENOUGH_DATA){
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    const imageData = ctx.getImageData(0,0,canvas.width,canvas.height);
+    const code = jsQR(imageData.data, imageData.width, imageData.height);
+    if(code && code.data){
+      handleScanResult(code.data.trim());
+    }
+  }
+  requestAnimationFrame(scanLoop);
+}
+
+function handleScanResult(matricula){
+  const now = Date.now();
+  if(matricula === lastScanCode && (now - lastScanTime) < 4000) return; // cooldown
+  lastScanCode = matricula;
+  lastScanTime = now;
+  processAlumno(matricula);
+}
+
+/* ======================================================================
+   MODO ENTRADA / SALIDA
+====================================================================== */
+$('modeEntrada').addEventListener('click', ()=>{
+  scanMode='entrada';
+  $('modeEntrada').classList.add('active');
+  $('modeSalida').classList.remove('active');
+});
+$('modeSalida').addEventListener('click', ()=>{
+  scanMode='salida';
+  $('modeSalida').classList.add('active');
+  $('modeEntrada').classList.remove('active');
+});
+
+/* ======================================================================
+   BÚSQUEDA MANUAL
+====================================================================== */
+$('manualInput').addEventListener('input', (e)=>{
+  const q = e.target.value.trim().toLowerCase();
+  const box = $('suggestions');
+  if(q.length < 2){ box.innerHTML=''; return; }
+  const results = Object.values(studentsByMatricula).filter(s=>{
+    return (String(s.matricula||'').toLowerCase().includes(q)) ||
+           (String(s.nombre||'').toLowerCase().includes(q));
+  }).slice(0,8);
+  box.innerHTML = results.map(s=>`
+    <div class="suggestion-item" data-mat="${escapeHtml(s.matricula)}">
+      <span>${escapeHtml(s.nombre)}</span>
+      <small>${escapeHtml(s.grado)}°${escapeHtml(s.grupo)} · ${escapeHtml(s.matricula)}</small>
+    </div>`).join('');
+  box.querySelectorAll('.suggestion-item').forEach(el=>{
+    el.addEventListener('click', ()=>{
+      processAlumno(el.dataset.mat);
+      $('manualInput').value='';
+      box.innerHTML='';
+    });
+  });
+});
+
+/* ======================================================================
+   PROCESAR ALUMNO ESCANEADO / BUSCADO
+====================================================================== */
+function processAlumno(matricula){
+  const alumno = studentsByMatricula[matricula];
+  if(!alumno){
+    beep(false);
+    renderAlumnoResult(null, matricula, 'err', 'Alumno no encontrado en la base de datos.');
+    return;
+  }
+  currentAlumno = alumno;
+  const fecha = getFecha();
+
+  if(scanMode==='entrada'){
+    const yaRegistrado = asistenciaHoyCache[matricula];
+    if(yaRegistrado){
+      beep(false);
+      renderAlumnoResult(alumno, matricula, 'warn', `Ya registrado hoy a las ${yaRegistrado.hora}.`);
+      return;
+    }
+    const registro = {
+      matricula, nombre: alumno.nombre, grado: alumno.grado, grupo: alumno.grupo,
+      turno: alumno.turno, hora: getHoraActual(), registradoPor: prefectaActual,
+      timestamp: Date.now()
+    };
+    db.ref(`prefectura/asistencia/${fecha}/${matricula}`).set(registro)
+      .then(()=>{
+        beep(true);
+        renderAlumnoResult(alumno, matricula, 'ok', `Entrada registrada a las ${registro.hora}.`);
+      })
+      .catch(err=>{
+        beep(false);
+        showToast('Error al guardar: '+err.message, 3500);
+      });
+  } else {
+    // modo salida -> abrir modal directamente
+    openModalSalida(alumno, matricula);
+    renderAlumnoResult(alumno, matricula, 'warn', 'Completa el motivo de salida.');
+  }
+}
+
+function renderAlumnoResult(alumno, matricula, tipo, mensaje){
+  const wrap = $('alumnoResultWrap');
+  if(!alumno){
+    wrap.innerHTML = `
+      <div class="alumno-result ${tipo}">
+        <div class="info">
+          <div class="nombre">Matrícula ${escapeHtml(matricula)}</div>
+          <div class="estado">${escapeHtml(mensaje)}</div>
+        </div>
+      </div>`;
+    return;
+  }
+  const foto = alumno.foto || '';
+  wrap.innerHTML = `
+    <div class="alumno-result ${tipo}">
+      ${foto ? `<img class="foto" src="${foto}">` : `<div class="foto" style="display:flex;align-items:center;justify-content:center;font-size:22px;">👤</div>`}
+      <div class="info">
+        <div class="nombre">${escapeHtml(alumno.nombre)}</div>
+        <div class="meta">${escapeHtml(alumno.grado)}° ${escapeHtml(alumno.grupo)} · ${escapeHtml(alumno.turno)} · Mat. ${escapeHtml(matricula)}</div>
+        <div class="estado">${escapeHtml(mensaje)}</div>
+      </div>
+    </div>
+    <div class="quick-actions">
+      <button class="primary" id="btnAgregarReporte">📋 Agregar reporte</button>
+      <button class="danger" id="btnRegistrarSalida">🚪 Salida anticipada</button>
+    </div>`;
+  $('btnAgregarReporte').addEventListener('click', ()=>openModalReporte(alumno, matricula));
+  $('btnRegistrarSalida').addEventListener('click', ()=>openModalSalida(alumno, matricula));
+}
+
+/* ======================================================================
+   ASISTENCIA / SALIDAS / REPORTES DE HOY (listeners en vivo)
+====================================================================== */
+function watchAsistenciaHoy(){
+  const fecha = getFecha();
+  db.ref(`prefectura/asistencia/${fecha}`).on('value', snap=>{
+    asistenciaHoyCache = snap.val() || {};
+    if($('view-dashboard').classList.contains('active')) renderDashboard();
+  });
+}
+function watchSalidasHoy(){
+  const fecha = getFecha();
+  db.ref(`prefectura/salidas/${fecha}`).on('value', snap=>{
+    salidasHoyCache = snap.val() || {};
+    if($('view-dashboard').classList.contains('active')) renderSalidasList();
+  });
+}
+function watchReportesHoy(){
+  const fecha = getFecha();
+  db.ref(`prefectura/reportes/${fecha}`).on('value', snap=>{
+    reportesCache = snap.val() || {};
+    if($('view-reportes').classList.contains('active')) renderReportesTab();
+  });
+}
+
+/* ======================================================================
+   MODAL: REPORTE DE CONDUCTA
+====================================================================== */
+function openModalReporte(alumno, matricula){
+  $('modalReporteAlumno').textContent = `${alumno.nombre} · ${alumno.grado}°${alumno.grupo} · ${alumno.turno}`;
+  document.querySelectorAll('#modalReporte .check-item input').forEach(cb=>{cb.checked=false; cb.closest('.check-item').classList.remove('checked');});
+  document.querySelectorAll('#modalReporte input[name=uniformeTipo]').forEach(r=>r.checked=false);
+  $('uniformeSub').classList.remove('show');
+  $('reporteNotas').value='';
+  $('modalReporte').dataset.matricula = matricula;
+  $('modalReporte').classList.add('active');
+}
+$('closeModalReporte').addEventListener('click', ()=>$('modalReporte').classList.remove('active'));
+$('cancelReporte').addEventListener('click', ()=>$('modalReporte').classList.remove('active'));
+
+document.querySelectorAll('#modalReporte .check-item').forEach(item=>{
+  item.addEventListener('click', (e)=>{
+    if(e.target.tagName==='INPUT') return;
+    const cb = item.querySelector('input');
+    cb.checked = !cb.checked;
+    cb.dispatchEvent(new Event('change'));
+  });
+  const cb = item.querySelector('input');
+  cb.addEventListener('change', ()=>{
+    item.classList.toggle('checked', cb.checked);
+    if(item.dataset.tipo==='uniforme'){
+      $('uniformeSub').classList.toggle('show', cb.checked);
+    }
+  });
+});
+
+$('guardarReporte').addEventListener('click', ()=>{
+  const matricula = $('modalReporte').dataset.matricula;
+  const alumno = studentsByMatricula[matricula];
+  if(!alumno) return;
+  const tipos = [];
+  document.querySelectorAll('#modalReporte .check-item input:checked').forEach(cb=>tipos.push(cb.value));
+  if(tipos.length===0){
+    showToast('Selecciona al menos un tipo de reporte.');
+    return;
+  }
+  let uniformeDetalle = null;
+  if(tipos.includes('uniforme')){
+    const sel = document.querySelector('#modalReporte input[name=uniformeTipo]:checked');
+    uniformeDetalle = sel ? sel.value : null;
+  }
+  const fecha = getFecha();
+  const registro = {
+    matricula, nombre: alumno.nombre, grado: alumno.grado, grupo: alumno.grupo, turno: alumno.turno,
+    tipos, uniformeDetalle, notas: $('reporteNotas').value.trim(),
+    registradoPor: prefectaActual, hora: getHoraActual(), timestamp: Date.now()
+  };
+  const newRef = db.ref(`prefectura/reportes/${fecha}`).push();
+  newRef.set(registro).then(()=>{
+    showToast('Reporte guardado.');
+    $('modalReporte').classList.remove('active');
+  }).catch(err=>showToast('Error: '+err.message, 3500));
+});
+
+/* ======================================================================
+   MODAL: SALIDA ANTICIPADA
+====================================================================== */
+let salidaMotivoSel = '';
+function openModalSalida(alumno, matricula){
+  $('modalSalidaAlumno').textContent = `${alumno.nombre} · ${alumno.grado}°${alumno.grupo} · ${alumno.turno}`;
+  salidaMotivoSel='';
+  document.querySelectorAll('#motivoChips .chip').forEach(c=>c.classList.remove('selected'));
+  $('salidaNotas').value='';
+  $('modalSalida').dataset.matricula = matricula;
+  $('modalSalida').classList.add('active');
+}
+$('closeModalSalida').addEventListener('click', ()=>$('modalSalida').classList.remove('active'));
+$('cancelSalida').addEventListener('click', ()=>$('modalSalida').classList.remove('active'));
+document.querySelectorAll('#motivoChips .chip').forEach(chip=>{
+  chip.addEventListener('click', ()=>{
+    document.querySelectorAll('#motivoChips .chip').forEach(c=>c.classList.remove('selected'));
+    chip.classList.add('selected');
+    salidaMotivoSel = chip.dataset.motivo;
+  });
+});
+$('guardarSalida').addEventListener('click', ()=>{
+  const matricula = $('modalSalida').dataset.matricula;
+  const alumno = studentsByMatricula[matricula];
+  if(!alumno) return;
+  if(!salidaMotivoSel){
+    showToast('Selecciona un motivo.');
+    return;
+  }
+  const fecha = getFecha();
+  const registro = {
+    matricula, nombre: alumno.nombre, grado: alumno.grado, grupo: alumno.grupo, turno: alumno.turno,
+    motivo: salidaMotivoSel, notas: $('salidaNotas').value.trim(),
+    registradoPor: prefectaActual, hora: getHoraActual(), timestamp: Date.now()
+  };
+  db.ref(`prefectura/salidas/${fecha}/${matricula}`).set(registro).then(()=>{
+    showToast('Salida registrada.');
+    $('modalSalida').classList.remove('active');
+    renderAlumnoResult(alumno, matricula, 'ok', `Salida registrada a las ${registro.hora}.`);
+  }).catch(err=>showToast('Error: '+err.message, 3500));
+});
+
+/* ======================================================================
+   VISTA: REPORTES
+====================================================================== */
+function renderReportesTab(){
+  const fecha = $('reportesDate').value || getFecha();
+  db.ref(`prefectura/reportes/${fecha}`).once('value').then(snap=>{
+    const data = snap.val() || {};
+    const tipoF = $('repFiltroTipo').value;
+    const gradoF = $('repFiltroGrado').value;
+    const rows = Object.entries(data).filter(([id,r])=>{
+      if(tipoF && !(r.tipos||[]).includes(tipoF)) return false;
+      if(gradoF && String(r.grado)!==gradoF) return false;
+      return true;
+    }).sort((a,b)=> (b[1].timestamp||0)-(a[1].timestamp||0));
+
+    const list = $('reportesList');
+    if(rows.length===0){
+      list.innerHTML = `<div class="empty-state"><div class="icn">📋</div>Sin reportes para este filtro.</div>`;
+      return;
+    }
+    const tipoLabels = {cabello:'Corte de cabello',maquillaje:'Maquillaje',zapatos:'Zapatos sucios',uniforme:'Uniforme incorrecto',credencial:'Sin credencial'};
+    list.innerHTML = rows.map(([id,r])=>`
+      <div class="alumno-result warn" style="margin-top:10px;">
+        <div class="info">
+          <div class="nombre">${escapeHtml(r.nombre)}</div>
+          <div class="meta">${escapeHtml(r.grado)}°${escapeHtml(r.grupo)} · ${escapeHtml(r.turno)} · ${escapeHtml(r.hora)} · ${escapeHtml(r.registradoPor)}</div>
+          <div class="estado">${(r.tipos||[]).map(t=>tipoLabels[t]||t).join(', ')}</div>
+          ${r.notas?`<div class="meta" style="margin-top:4px;">"${escapeHtml(r.notas)}"</div>`:''}
+        </div>
+      </div>`).join('');
+  });
+}
+$('reportesDate').addEventListener('change', renderReportesTab);
+$('reportesHoyBtn').addEventListener('click', ()=>{ $('reportesDate').value=getFecha(); renderReportesTab(); });
+$('repFiltroTipo').addEventListener('change', renderReportesTab);
+$('repFiltroGrado').addEventListener('change', renderReportesTab);
+
+/* ======================================================================
+   VISTA: DASHBOARD
+====================================================================== */
+function renderDashboard(){
+  const fecha = $('dashDate').value || getFecha();
+  const isToday = fecha === getFecha();
+
+  const asistenciaPromise = isToday
+    ? Promise.resolve(asistenciaHoyCache)
+    : db.ref(`prefectura/asistencia/${fecha}`).once('value').then(s=>s.val()||{});
+  const salidasPromise = isToday
+    ? Promise.resolve(salidasHoyCache)
+    : db.ref(`prefectura/salidas/${fecha}`).once('value').then(s=>s.val()||{});
+  const reportesPromise = isToday
+    ? Promise.resolve(reportesCache)
+    : db.ref(`prefectura/reportes/${fecha}`).once('value').then(s=>s.val()||{});
+
+  Promise.all([asistenciaPromise, salidasPromise, reportesPromise]).then(([asistencia, salidas, reportes])=>{
+    const allStudents = Object.values(studentsByMatricula);
+    const totalAlumnos = allStudents.length;
+    const totalRegistrados = Object.keys(asistencia).length;
+    const totalFaltantes = totalAlumnos - totalRegistrados;
+    const totalReportes = Object.keys(reportes).length;
+
+    $('statGrid').innerHTML = `
+      <div class="stat-box accent"><div class="num">${totalRegistrados}</div><div class="lbl">Entradas registradas</div></div>
+      <div class="stat-box warn"><div class="num">${totalFaltantes}</div><div class="lbl">Alumnos sin registrar</div></div>
+      <div class="stat-box"><div class="num">${totalReportes}</div><div class="lbl">Reportes del día</div></div>
+      <div class="stat-box"><div class="num">${Object.keys(salidas).length}</div><div class="lbl">Salidas anticipadas</div></div>`;
+
+    renderTablaGradoGrupo(allStudents, asistencia);
+    renderFaltasList(allStudents, asistencia);
+    renderSalidasListData(salidas);
+  });
+}
+$('dashDate').addEventListener('change', renderDashboard);
+$('dashHoyBtn').addEventListener('click', ()=>{ $('dashDate').value=getFecha(); renderDashboard(); });
+$('dashTurno').addEventListener('change', renderDashboard);
+$('faltasGrado').addEventListener('input', renderDashboard);
+$('faltasTurno').addEventListener('input', renderDashboard);
+$('faltasBusca').addEventListener('input', renderDashboard);
+
+function renderTablaGradoGrupo(allStudents, asistencia){
+  const turnoF = $('dashTurno').value;
+  const filtered = turnoF ? allStudents.filter(s=>s.turno===turnoF) : allStudents;
+  const groups = {};
+  filtered.forEach(s=>{
+    const key = `${s.grado}°${s.grupo}`;
+    if(!groups[key]) groups[key] = {grado:s.grado, grupo:s.grupo, turno:s.turno, total:0, presentes:0};
+    groups[key].total++;
+    if(asistencia[s.matricula]) groups[key].presentes++;
+  });
+  const rows = Object.values(groups).sort((a,b)=> (a.grado-b.grado) || String(a.grupo).localeCompare(String(b.grupo)));
+  let html = `<thead><tr><th>Grado</th><th>Grupo</th><th>Turno</th><th>Total</th><th>Presentes</th><th>Faltan</th><th>%</th></tr></thead><tbody>`;
+  if(rows.length===0){
+    html += `<tr><td colspan="7" style="text-align:center;color:var(--gris);padding:16px;">Sin datos</td></tr>`;
+  }
+  rows.forEach(r=>{
+    const pct = r.total ? Math.round((r.presentes/r.total)*100) : 0;
+    html += `<tr>
+      <td>${escapeHtml(r.grado)}°</td><td>${escapeHtml(r.grupo)}</td>
+      <td><span class="badge ${r.turno==='Matutino'?'matutino':'mixto'}">${escapeHtml(r.turno)}</span></td>
+      <td>${r.total}</td><td>${r.presentes}</td><td>${r.total-r.presentes}</td><td>${pct}%</td>
+    </tr>`;
+  });
+  html += `</tbody>`;
+  $('tablaGradoGrupo').innerHTML = html;
+}
+
+function renderFaltasList(allStudents, asistencia){
+  const gradoF = $('faltasGrado').value;
+  const turnoF = $('faltasTurno').value;
+  const buscaF = $('faltasBusca').value.trim().toLowerCase();
+  const faltantes = allStudents.filter(s=>{
+    if(asistencia[s.matricula]) return false;
+    if(gradoF && String(s.grado)!==gradoF) return false;
+    if(turnoF && s.turno!==turnoF) return false;
+    if(buscaF && !String(s.nombre).toLowerCase().includes(buscaF)) return false;
+    return true;
+  }).sort((a,b)=>String(a.nombre).localeCompare(String(b.nombre)));
+
+  const list = $('faltasList');
+  if(faltantes.length===0){
+    list.innerHTML = `<div class="empty-state"><div class="icn">✅</div>Todos los alumnos filtrados están registrados.</div>`;
+    return;
+  }
+  list.innerHTML = faltantes.map(s=>`
+    <div class="alumno-result err" style="margin-top:8px;padding:11px;">
+      <div class="info">
+        <div class="nombre" style="font-size:13px;">${escapeHtml(s.nombre)}</div>
+        <div class="meta">${escapeHtml(s.grado)}°${escapeHtml(s.grupo)} · <span class="badge ${s.turno==='Matutino'?'matutino':'mixto'}">${escapeHtml(s.turno)}</span> · Mat. ${escapeHtml(s.matricula)}</div>
+      </div>
+    </div>`).join('');
+}
+
+function renderSalidasList(){
+  renderSalidasListData(salidasHoyCache);
+}
+function renderSalidasListData(salidas){
+  const list = $('salidasList');
+  const rows = Object.values(salidas||{}).sort((a,b)=>(b.timestamp||0)-(a.timestamp||0));
+  if(rows.length===0){
+    list.innerHTML = `<div class="empty-state"><div class="icn">🚪</div>Sin salidas anticipadas registradas.</div>`;
+    return;
+  }
+  list.innerHTML = rows.map(r=>`
+    <div class="alumno-result warn" style="margin-top:8px;padding:11px;">
+      <div class="info">
+        <div class="nombre" style="font-size:13px;">${escapeHtml(r.nombre)}</div>
+        <div class="meta">${escapeHtml(r.grado)}°${escapeHtml(r.grupo)} · ${escapeHtml(r.hora)} · ${escapeHtml(r.registradoPor)}</div>
+        <div class="estado">Motivo: ${escapeHtml(r.motivo)}</div>
+        ${r.notas?`<div class="meta">"${escapeHtml(r.notas)}"</div>`:''}
+      </div>
+    </div>`).join('');
+}
+
+/* ======================================================================
+   AJUSTES
+====================================================================== */
+function renderPrefectasTags(){
+  $('prefectasTags').innerHTML = prefectas.map((p,i)=>`
+    <div class="tag">${escapeHtml(p)} <button data-i="${i}">&times;</button></div>`).join('');
+  $('prefectasTags').querySelectorAll('button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const i = parseInt(btn.dataset.i);
+      prefectas.splice(i,1);
+      db.ref('prefectura/config/prefectas').set(prefectas);
+    });
+  });
+}
+$('addPrefectaBtn').addEventListener('click', ()=>{
+  const val = $('nuevaPrefectaInput').value.trim();
+  if(!val) return;
+  prefectas.push(val);
+  db.ref('prefectura/config/prefectas').set(prefectas).then(()=>{
+    $('nuevaPrefectaInput').value='';
+    showToast('Prefecta agregada.');
+  });
+});
+$('cambiarPinBtn').addEventListener('click', ()=>{
+  const val = $('nuevoPinInput').value.trim();
+  if(!val){ showToast('Escribe una contraseña.'); return; }
+  db.ref('prefectura/config/pin').set(val).then(()=>{
+    $('nuevoPinInput').value='';
+    showToast('Contraseña actualizada.');
+  });
+});
+
+/* ======================================================================
+   EXPORTAR CSV
+====================================================================== */
+$('exportCsvBtn').addEventListener('click', ()=>{
+  const fecha = getFecha();
+  db.ref(`prefectura/asistencia/${fecha}`).once('value').then(snap=>{
+    const data = snap.val() || {};
+    const rows = [['Matrícula','Nombre','Grado','Grupo','Turno','Hora','Registrado por']];
+    Object.values(data).forEach(r=>{
+      rows.push([r.matricula, r.nombre, r.grado, r.grupo, r.turno, r.hora, r.registradoPor]);
+    });
+    const csv = rows.map(r=>r.map(c=>`"${String(c===undefined?'':c).replace(/"/g,'""')}"`).join(',')).join('\n');
+    const blob = new Blob(["\uFEFF"+csv], {type:'text/csv;charset=utf-8;'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `asistencia_${fecha}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+});
+
+/* ======================================================================
+   PWA: MANIFEST + SERVICE WORKER
+====================================================================== */
+const manifest = {
+  name: "Prefectura Escolar - 21 de Noviembre",
+  short_name: "Prefectura",
+  start_url: ".",
+  display: "standalone",
+  background_color: "#eaf6fb",
+  theme_color: "#0B2D6B",
+  icons: [
+    {src:"icon-192.png", sizes:"192x192", type:"image/png"},
+    {src:"icon-512.png", sizes:"512x512", type:"image/png"}
+  ]
+};
+const manifestBlob = new Blob([JSON.stringify(manifest)], {type:'application/json'});
+$('manifestLink').href = URL.createObjectURL(manifestBlob);
+
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('sw.js').catch(()=>{});
+  });
+}
+
+/* ======================================================================
+   ARRANQUE
+====================================================================== */
+loadPrefecturaConfig();
+loadStudents();
+</script>
+</body>
+</html>
