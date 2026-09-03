@@ -604,6 +604,23 @@ table.tbl tr:last-child td{border-bottom:none;}
   </div>
 </div>
 
+<!-- ===================== MODAL: ENVIAR REPORTE AL PAPÁ ===================== -->
+<div class="modal-overlay" id="modalEnviarReporte">
+  <div class="modal-box">
+    <button class="modal-close" id="closeModalEnviarReporte">&times;</button>
+    <h3>Enviar reporte por Telegram</h3>
+    <div class="sub" id="enviarReporteAlumno"></div>
+    <div class="sub" id="enviarReporteEstado" style="margin-top:-10px;margin-bottom:14px;"></div>
+
+    <textarea class="notas" id="enviarReporteMensaje" style="min-height:120px;" placeholder="Mensaje para el papá"></textarea>
+
+    <div class="modal-actions">
+      <button class="btn-cancel" id="cancelEnviarReporte">Cancelar</button>
+      <button class="btn-save" id="enviarReporteBtn">Enviar por Telegram</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <!-- ===================== FIREBASE ===================== -->
@@ -11123,11 +11140,13 @@ $('modeEntrada').addEventListener('click', ()=>{
   scanMode='entrada';
   $('modeEntrada').classList.add('active');
   $('modeSalida').classList.remove('active');
+  if(!videoStream) startCamera();
 });
 $('modeSalida').addEventListener('click', ()=>{
   scanMode='salida';
   $('modeSalida').classList.add('active');
   $('modeEntrada').classList.remove('active');
+  if(!videoStream) startCamera();
 });
 
 /* ======================================================================
@@ -11158,6 +11177,11 @@ $('manualInput').addEventListener('input', (e)=>{
 /* ======================================================================
    PROCESAR ALUMNO ESCANEADO / BUSCADO
 ====================================================================== */
+// Alumno de pruebas: puede registrar entrada y salida las veces que se
+// necesite en el mismo día (para probar el sistema y Telegram), sin que
+// se le bloquee por "ya registrado hoy".
+const TEST_MATRICULA = "2024065";
+
 function processAlumno(matricula){
   const alumno = studentsByMatricula[matricula];
   if(!alumno){
@@ -11167,10 +11191,11 @@ function processAlumno(matricula){
   }
   currentAlumno = alumno;
   const fecha = getFecha();
+  const esPrueba = matricula === TEST_MATRICULA;
 
   if(scanMode==='entrada'){
     const yaRegistrado = asistenciaHoyCache[matricula];
-    if(yaRegistrado){
+    if(yaRegistrado && !esPrueba){
       beep(false);
       if(navigator.vibrate) navigator.vibrate(300);
       renderAlumnoResult(alumno, matricula, 'warn', `Ya registrado hoy a las ${yaRegistrado.hora}.`);
@@ -11181,6 +11206,24 @@ function processAlumno(matricula){
       turno: alumno.turno, hora: getHoraActual(), registradoPor: prefectaActual,
       timestamp: Date.now()
     };
+
+    const avisarEntrada = ()=>{
+      successFeedback();
+      renderAlumnoResult(alumno, matricula, 'ok', `Entrada registrada a las ${registro.hora}.`);
+      const vinculo = telegramLinks[matricula];
+      if(vinculo && vinculo.chatId){
+        sendTelegramMessage(vinculo.chatId, `✅ <b>${escapeHtml(alumno.nombre)}</b> ingresó a la escuela hoy a las ${registro.hora} (${escapeHtml(alumno.turno)}).`);
+      }
+    };
+
+    if(esPrueba){
+      // Sin transacción ni bloqueo: se sobreescribe cada vez, cuantas veces se quiera.
+      db.ref(`prefectura/asistencia/${fecha}/${matricula}`).set(registro)
+        .then(avisarEntrada)
+        .catch(err=>{ beep(false); showToast('Error al guardar: '+err.message, 3500); });
+      return;
+    }
+
     db.ref(`prefectura/asistencia/${fecha}/${matricula}`).transaction(current=>{
       if(current) return; // ya existe -> no lo tocamos
       return registro;
@@ -11192,12 +11235,7 @@ function processAlumno(matricula){
         renderAlumnoResult(alumno, matricula, 'warn', `Ya registrado hoy a las ${existente ? existente.hora : ''}.`);
         return;
       }
-      successFeedback();
-      renderAlumnoResult(alumno, matricula, 'ok', `Entrada registrada a las ${registro.hora}.`);
-      const vinculo = telegramLinks[matricula];
-      if(vinculo && vinculo.chatId){
-        sendTelegramMessage(vinculo.chatId, `✅ <b>${escapeHtml(alumno.nombre)}</b> ingresó a la escuela hoy a las ${registro.hora} (${escapeHtml(alumno.turno)}).`);
-      }
+      avisarEntrada();
     }).catch(err=>{
       beep(false);
       showToast('Error al guardar: '+err.message, 3500);
@@ -11328,8 +11366,9 @@ $('guardarReporte').addEventListener('click', ()=>{
 ====================================================================== */
 let salidaMotivoSel = '';
 function openModalSalida(alumno, matricula){
+  const esPrueba = matricula === TEST_MATRICULA;
   const yaRegistrada = salidasHoyCache[matricula];
-  if(yaRegistrada){
+  if(yaRegistrada && !esPrueba){
     beep(false);
     if(navigator.vibrate) navigator.vibrate(300);
     renderAlumnoResult(alumno, matricula, 'warn', `Ya tiene una salida registrada hoy a las ${yaRegistrada.hora} (${yaRegistrada.motivo}).`);
@@ -11355,7 +11394,8 @@ $('guardarSalida').addEventListener('click', ()=>{
   const matricula = $('modalSalida').dataset.matricula;
   const alumno = studentsByMatricula[matricula];
   if(!alumno) return;
-  if(salidasHoyCache[matricula]){
+  const esPrueba = matricula === TEST_MATRICULA;
+  if(salidasHoyCache[matricula] && !esPrueba){
     showToast('Este alumno ya tiene una salida registrada hoy.', 3200);
     $('modalSalida').classList.remove('active');
     return;
@@ -11370,6 +11410,26 @@ $('guardarSalida').addEventListener('click', ()=>{
     motivo: salidaMotivoSel, notas: $('salidaNotas').value.trim(),
     registradoPor: prefectaActual, hora: getHoraActual(), timestamp: Date.now()
   };
+
+  const avisarSalida = ()=>{
+    showToast('Salida registrada.');
+    $('modalSalida').classList.remove('active');
+    successFeedback();
+    renderAlumnoResult(alumno, matricula, 'ok', `Salida registrada a las ${registro.hora}.`);
+    const vinculo = telegramLinks[matricula];
+    if(vinculo && vinculo.chatId){
+      sendTelegramMessage(vinculo.chatId, `🚪 <b>${escapeHtml(alumno.nombre)}</b> salió de la escuela hoy a las ${registro.hora}. Motivo: ${escapeHtml(registro.motivo)}.`);
+    }
+  };
+
+  if(esPrueba){
+    // Sin transacción ni bloqueo: se sobreescribe cada vez, cuantas veces se quiera.
+    db.ref(`prefectura/salidas/${fecha}/${matricula}`).set(registro)
+      .then(avisarSalida)
+      .catch(err=>showToast('Error: '+err.message, 3500));
+    return;
+  }
+
   db.ref(`prefectura/salidas/${fecha}/${matricula}`).transaction(current=>{
     if(current) return; // ya existe -> abortar, no sobreescribir
     return registro;
@@ -11379,10 +11439,7 @@ $('guardarSalida').addEventListener('click', ()=>{
       $('modalSalida').classList.remove('active');
       return;
     }
-    showToast('Salida registrada.');
-    $('modalSalida').classList.remove('active');
-    successFeedback();
-    renderAlumnoResult(alumno, matricula, 'ok', `Salida registrada a las ${registro.hora}.`);
+    avisarSalida();
   }).catch(err=>showToast('Error: '+err.message, 3500));
 });
 
@@ -11407,6 +11464,7 @@ function renderReportesTab(){
       return;
     }
     const tipoLabels = {cabello:'Corte de cabello',maquillaje:'Maquillaje',zapatos:'Zapatos sucios',uniforme:'Uniforme incorrecto',credencial:'Sin credencial'};
+    reportesTabData = data;
     list.innerHTML = rows.map(([id,r])=>`
       <div class="alumno-result warn" style="margin-top:10px;">
         <div class="info">
@@ -11415,13 +11473,73 @@ function renderReportesTab(){
           <div class="estado">${(r.tipos||[]).map(t=>tipoLabels[t]||t).join(', ')}</div>
           ${r.notas?`<div class="meta" style="margin-top:4px;">"${escapeHtml(r.notas)}"</div>`:''}
         </div>
+        <button class="share-btn" data-id="${escapeHtml(id)}">📨 Enviar a papá</button>
       </div>`).join('');
+    list.querySelectorAll('.share-btn').forEach(btn=>{
+      btn.addEventListener('click', ()=>openModalEnviarReporte(btn.dataset.id));
+    });
   });
 }
 $('reportesDate').addEventListener('change', renderReportesTab);
 $('reportesHoyBtn').addEventListener('click', ()=>{ $('reportesDate').value=getFecha(); renderReportesTab(); });
 $('repFiltroTipo').addEventListener('change', renderReportesTab);
 $('repFiltroGrado').addEventListener('change', renderReportesTab);
+
+/* ======================================================================
+   ENVIAR REPORTE AL PAPÁ POR TELEGRAM (mensaje personalizable)
+====================================================================== */
+let reportesTabData = {};
+const TIPO_LABELS_REPORTE = {cabello:'corte de cabello inadecuado',maquillaje:'maquillaje',zapatos:'zapatos sucios',uniforme:'uniforme incorrecto',credencial:'no traer su credencial'};
+
+function openModalEnviarReporte(reportId){
+  const r = reportesTabData[reportId];
+  if(!r) return;
+  const alumno = studentsByMatricula[r.matricula];
+  const vinculo = telegramLinks[r.matricula];
+  const tiposTexto = (r.tipos||[]).map(t=>TIPO_LABELS_REPORTE[t]||t).join(', ');
+
+  let mensaje = `Hola, le escribimos de la Escuela Secundaria General "21 de Noviembre" para informarle que ${r.nombre} (${r.grado}°${r.grupo}) tuvo un reporte hoy a las ${r.hora} por: ${tiposTexto}.`;
+  if(r.notas) mensaje += `\nNota de la prefecta: ${r.notas}`;
+  mensaje += `\nQuedamos atentos, gracias.`;
+
+  $('modalEnviarReporte').dataset.matricula = r.matricula;
+  $('enviarReporteAlumno').textContent = `${r.nombre} · ${r.grado}°${r.grupo} · ${tiposTexto}`;
+  $('enviarReporteMensaje').value = mensaje;
+
+  const estadoEl = $('enviarReporteEstado');
+  if(vinculo && vinculo.chatId){
+    estadoEl.textContent = '✅ El papá está vinculado a Telegram, el mensaje le llegará directo.';
+    estadoEl.style.color = 'var(--verde)';
+    $('enviarReporteBtn').disabled = false;
+  } else {
+    estadoEl.textContent = '⚠️ Este alumno no tiene a nadie vinculado a Telegram todavía. Ve a la pestaña Padres para compartirle el enlace antes de poder enviarle el reporte.';
+    estadoEl.style.color = 'var(--rojo)';
+    $('enviarReporteBtn').disabled = true;
+  }
+  $('modalEnviarReporte').classList.add('active');
+}
+$('closeModalEnviarReporte').addEventListener('click', ()=>$('modalEnviarReporte').classList.remove('active'));
+$('cancelEnviarReporte').addEventListener('click', ()=>$('modalEnviarReporte').classList.remove('active'));
+$('enviarReporteBtn').addEventListener('click', async ()=>{
+  const matricula = $('modalEnviarReporte').dataset.matricula;
+  const vinculo = telegramLinks[matricula];
+  const texto = $('enviarReporteMensaje').value.trim();
+  if(!vinculo || !vinculo.chatId){
+    showToast('Este alumno no tiene a nadie vinculado a Telegram.', 3500);
+    return;
+  }
+  if(!texto){
+    showToast('Escribe un mensaje.');
+    return;
+  }
+  $('enviarReporteBtn').disabled = true;
+  $('enviarReporteBtn').textContent = 'Enviando...';
+  await sendTelegramMessage(vinculo.chatId, texto);
+  $('enviarReporteBtn').textContent = 'Enviar por Telegram';
+  $('enviarReporteBtn').disabled = false;
+  $('modalEnviarReporte').classList.remove('active');
+  showToast('Mensaje enviado.');
+});
 
 /* ======================================================================
    VISTA: DASHBOARD
