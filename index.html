@@ -140,6 +140,27 @@ main{flex:1;padding:16px;max-width:900px;width:100%;margin:0 auto;padding-bottom
   position:absolute;inset:26%;border:3px solid var(--azul-cielo);border-radius:16px;
   box-shadow:0 0 0 2000px rgba(0,0,0,.28);pointer-events:none;
 }
+.scan-checkmark{
+  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:90px;opacity:0;pointer-events:none;filter:drop-shadow(0 0 12px rgba(0,0,0,.5));
+  transition:opacity .1s;
+}
+.camera-wrap.flash-success{animation:flashGreen .75s ease;}
+.camera-wrap.flash-success .scan-checkmark{
+  opacity:1;animation:popCheck .75s ease;
+}
+@keyframes flashGreen{
+  0%{box-shadow:inset 0 0 0 0 rgba(31,138,85,0);}
+  15%{box-shadow:inset 0 0 0 12px rgba(31,138,85,.85);}
+  100%{box-shadow:inset 0 0 0 0 rgba(31,138,85,0);}
+}
+@keyframes popCheck{
+  0%{transform:scale(.4);opacity:0;}
+  25%{transform:scale(1.15);opacity:1;}
+  40%{transform:scale(1);opacity:1;}
+  80%{transform:scale(1);opacity:1;}
+  100%{transform:scale(1);opacity:0;}
+}
 .camera-off{
   position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;
   color:var(--azul-cielo);text-align:center;padding:20px;gap:10px;
@@ -356,6 +377,7 @@ table.tbl tr:last-child td{border-bottom:none;}
         <div class="camera-wrap" id="cameraWrap">
           <video id="video" playsinline muted></video>
           <div class="camera-frame"></div>
+          <div class="scan-checkmark" id="scanCheckmark">✅</div>
           <div class="camera-off" id="cameraOff" style="display:none;">
             <div>📷 Cámara desactivada</div>
             <button id="startCamBtn">Activar cámara</button>
@@ -10763,17 +10785,51 @@ function showToast(msg, ms=2600){
 }
 function beep(success=true){
   try{
-    const ctx = new (window.AudioContext||window.webkitAudioContext)();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.connect(g); g.connect(ctx.destination);
-    o.type='sine';
-    o.frequency.value = success ? 880 : 300;
-    g.gain.setValueAtTime(0.15, ctx.currentTime);
-    g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + (success?0.18:0.35));
-    o.start();
-    o.stop(ctx.currentTime + (success?0.18:0.35));
+    const ctx = getAudioCtx();
+    if(success){
+      // dos tonos ascendentes, fuerte y clara (para que se escuche en un pasillo con ruido)
+      playTone(ctx, 784, ctx.currentTime, 0.13, 0.5);
+      playTone(ctx, 1046, ctx.currentTime + 0.12, 0.16, 0.5);
+    } else {
+      playTone(ctx, 220, ctx.currentTime, 0.35, 0.4);
+    }
   }catch(e){}
+}
+let _audioCtx = null;
+function getAudioCtx(){
+  if(!_audioCtx){
+    _audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  }
+  if(_audioCtx.state === 'suspended') _audioCtx.resume();
+  return _audioCtx;
+}
+function playTone(ctx, freq, startTime, duration, volume){
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.connect(g); g.connect(ctx.destination);
+  o.type = 'square';
+  o.frequency.value = freq;
+  g.gain.setValueAtTime(volume, startTime);
+  g.gain.exponentialRampToValueAtTime(0.001, startTime + duration);
+  o.start(startTime);
+  o.stop(startTime + duration);
+}
+
+/**
+ * Confirmación fuerte de que el registro sí se guardó: vibración,
+ * sonido y una palomita verde grande sobre la cámara.
+ */
+function successFeedback(){
+  beep(true);
+  if(navigator.vibrate) navigator.vibrate([120, 60, 140]);
+  const wrap = $('cameraWrap');
+  if(wrap){
+    wrap.classList.remove('flash-success');
+    void wrap.offsetWidth; // reinicia la animación si se dispara varias veces seguidas
+    wrap.classList.add('flash-success');
+    clearTimeout(wrap._flashTimer);
+    wrap._flashTimer = setTimeout(()=>wrap.classList.remove('flash-success'), 750);
+  }
 }
 function escapeHtml(s){
   if(s===undefined||s===null) return '';
@@ -10979,7 +11035,14 @@ function initAppUI(){
 ====================================================================== */
 async function startCamera(){
   try{
-    videoStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+    videoStream = await navigator.mediaDevices.getUserMedia({
+      video:{
+        facingMode:'environment',
+        width:{ideal:1920},
+        height:{ideal:1080},
+        advanced:[{focusMode:'continuous'}]
+      }
+    });
     const video = $('video');
     video.srcObject = videoStream;
     await video.play();
@@ -11008,8 +11071,8 @@ $('startCamBtn').addEventListener('click', startCamera);
 $('stopCamBtn').addEventListener('click', stopCamera);
 
 let lastFrameTime = 0;
-const SCAN_INTERVAL_MS = 180; // no procesar cada frame, solo cada ~180ms (mejor rendimiento en tablets)
-const SCAN_MAX_DIM = 640;     // resolución máxima usada para buscar el QR (más rápido y suficiente)
+const SCAN_INTERVAL_MS = 120; // qué tan seguido se intenta leer (más rápido = detecta antes)
+const SCAN_MAX_DIM = 900;     // resolución usada para buscar el QR (más alta = detecta desde más lejos)
 
 function scanLoop(timestamp){
   if(!scanLoopActive) return;
@@ -11109,6 +11172,7 @@ function processAlumno(matricula){
     const yaRegistrado = asistenciaHoyCache[matricula];
     if(yaRegistrado){
       beep(false);
+      if(navigator.vibrate) navigator.vibrate(300);
       renderAlumnoResult(alumno, matricula, 'warn', `Ya registrado hoy a las ${yaRegistrado.hora}.`);
       return;
     }
@@ -11117,19 +11181,27 @@ function processAlumno(matricula){
       turno: alumno.turno, hora: getHoraActual(), registradoPor: prefectaActual,
       timestamp: Date.now()
     };
-    db.ref(`prefectura/asistencia/${fecha}/${matricula}`).set(registro)
-      .then(()=>{
-        beep(true);
-        renderAlumnoResult(alumno, matricula, 'ok', `Entrada registrada a las ${registro.hora}.`);
-        const vinculo = telegramLinks[matricula];
-        if(vinculo && vinculo.chatId){
-          sendTelegramMessage(vinculo.chatId, `✅ <b>${escapeHtml(alumno.nombre)}</b> ingresó a la escuela hoy a las ${registro.hora} (${escapeHtml(alumno.turno)}).`);
-        }
-      })
-      .catch(err=>{
+    db.ref(`prefectura/asistencia/${fecha}/${matricula}`).transaction(current=>{
+      if(current) return; // ya existe -> no lo tocamos
+      return registro;
+    }).then(result=>{
+      if(!result.committed){
         beep(false);
-        showToast('Error al guardar: '+err.message, 3500);
-      });
+        if(navigator.vibrate) navigator.vibrate(300);
+        const existente = result.snapshot.val();
+        renderAlumnoResult(alumno, matricula, 'warn', `Ya registrado hoy a las ${existente ? existente.hora : ''}.`);
+        return;
+      }
+      successFeedback();
+      renderAlumnoResult(alumno, matricula, 'ok', `Entrada registrada a las ${registro.hora}.`);
+      const vinculo = telegramLinks[matricula];
+      if(vinculo && vinculo.chatId){
+        sendTelegramMessage(vinculo.chatId, `✅ <b>${escapeHtml(alumno.nombre)}</b> ingresó a la escuela hoy a las ${registro.hora} (${escapeHtml(alumno.turno)}).`);
+      }
+    }).catch(err=>{
+      beep(false);
+      showToast('Error al guardar: '+err.message, 3500);
+    });
   } else {
     // modo salida -> abrir modal directamente
     openModalSalida(alumno, matricula);
@@ -11256,6 +11328,13 @@ $('guardarReporte').addEventListener('click', ()=>{
 ====================================================================== */
 let salidaMotivoSel = '';
 function openModalSalida(alumno, matricula){
+  const yaRegistrada = salidasHoyCache[matricula];
+  if(yaRegistrada){
+    beep(false);
+    if(navigator.vibrate) navigator.vibrate(300);
+    renderAlumnoResult(alumno, matricula, 'warn', `Ya tiene una salida registrada hoy a las ${yaRegistrada.hora} (${yaRegistrada.motivo}).`);
+    return;
+  }
   $('modalSalidaAlumno').textContent = `${alumno.nombre} · ${alumno.grado}°${alumno.grupo} · ${alumno.turno}`;
   salidaMotivoSel='';
   document.querySelectorAll('#motivoChips .chip').forEach(c=>c.classList.remove('selected'));
@@ -11276,6 +11355,11 @@ $('guardarSalida').addEventListener('click', ()=>{
   const matricula = $('modalSalida').dataset.matricula;
   const alumno = studentsByMatricula[matricula];
   if(!alumno) return;
+  if(salidasHoyCache[matricula]){
+    showToast('Este alumno ya tiene una salida registrada hoy.', 3200);
+    $('modalSalida').classList.remove('active');
+    return;
+  }
   if(!salidaMotivoSel){
     showToast('Selecciona un motivo.');
     return;
@@ -11286,9 +11370,18 @@ $('guardarSalida').addEventListener('click', ()=>{
     motivo: salidaMotivoSel, notas: $('salidaNotas').value.trim(),
     registradoPor: prefectaActual, hora: getHoraActual(), timestamp: Date.now()
   };
-  db.ref(`prefectura/salidas/${fecha}/${matricula}`).set(registro).then(()=>{
+  db.ref(`prefectura/salidas/${fecha}/${matricula}`).transaction(current=>{
+    if(current) return; // ya existe -> abortar, no sobreescribir
+    return registro;
+  }).then(result=>{
+    if(!result.committed){
+      showToast('Este alumno ya tiene una salida registrada hoy.', 3200);
+      $('modalSalida').classList.remove('active');
+      return;
+    }
     showToast('Salida registrada.');
     $('modalSalida').classList.remove('active');
+    successFeedback();
     renderAlumnoResult(alumno, matricula, 'ok', `Salida registrada a las ${registro.hora}.`);
   }).catch(err=>showToast('Error: '+err.message, 3500));
 });
