@@ -1,0 +1,75 @@
+{
+  "rules": {
+    "$otroNodo": {
+      ".read": true,
+      ".write": true
+    },
+    "usuarios": {
+      ".read": true,
+      ".write": "auth != null && root.child('usuarios').child(auth.uid).child('role').val() === 'admin' && root.child('usuarios').child(auth.uid).child('active').val() !== false"
+    },
+    "prefecturaV2": {
+      ".read": "auth != null && ((root.child('usuarios').child(auth.uid).child('role').val() === 'admin' && root.child('usuarios').child(auth.uid).child('active').val() !== false) || root.child('prefecturaV2/usuarios').child(auth.uid).child('activo').val() === true)",
+      "usuarios": {
+        "$uid": {
+          ".write": "auth != null && ((root.child('usuarios').child(auth.uid).child('role').val() === 'admin' && root.child('usuarios').child(auth.uid).child('active').val() !== false) || (root.child('prefecturaV2/usuarios').child(auth.uid).child('activo').val() === true && root.child('prefecturaV2/usuarios').child(auth.uid).child('rol').val() === 'admin'))"
+        }
+      },
+      "config": {
+        ".write": "auth != null && ((root.child('usuarios').child(auth.uid).child('role').val() === 'admin' && root.child('usuarios').child(auth.uid).child('active').val() !== false) || (root.child('prefecturaV2/usuarios').child(auth.uid).child('activo').val() === true && root.child('prefecturaV2/usuarios').child(auth.uid).child('rol').val() === 'admin'))"
+      },
+      "entradas": {
+        "$fecha": {
+          "$mat": {
+            ".write": "auth != null && ((root.child('usuarios').child(auth.uid).child('role').val() === 'admin' && root.child('usuarios').child(auth.uid).child('active').val() !== false) || (root.child('prefecturaV2/usuarios').child(auth.uid).child('activo').val() === true && (!data.exists() || root.child('prefecturaV2/usuarios').child(auth.uid).child('rol').val() === 'admin' || root.child('prefecturaV2/config/pruebas').child($mat).val() === true)))",
+            ".validate": "newData.child('porUid').val() === auth.uid && newData.child('mat').val() === $mat"
+          }
+        }
+      },
+      "salidas": {
+        "$fecha": {
+          "$mat": {
+            ".write": "auth != null && ((root.child('usuarios').child(auth.uid).child('role').val() === 'admin' && root.child('usuarios').child(auth.uid).child('active').val() !== false) || (root.child('prefecturaV2/usuarios').child(auth.uid).child('activo').val() === true && (!data.exists() || root.child('prefecturaV2/usuarios').child(auth.uid).child('rol').val() === 'admin' || root.child('prefecturaV2/config/pruebas').child($mat).val() === true)))",
+            ".validate": "newData.child('porUid').val() === auth.uid && newData.child('mat').val() === $mat"
+          }
+        }
+      },
+      "anticipadas": {
+        "$fecha": {
+          "$mat": {
+            ".write": "auth != null && ((root.child('usuarios').child(auth.uid).child('role').val() === 'admin' && root.child('usuarios').child(auth.uid).child('active').val() !== false) || (root.child('prefecturaV2/usuarios').child(auth.uid).child('activo').val() === true && (!data.exists() || root.child('prefecturaV2/usuarios').child(auth.uid).child('rol').val() === 'admin' || root.child('prefecturaV2/config/pruebas').child($mat).val() === true)))",
+            ".validate": "newData.child('porUid').val() === auth.uid && newData.child('mat').val() === $mat"
+          }
+        }
+      },
+      "faltas": {
+        "$fecha": {
+          "$mat": {
+            ".write": "auth != null && ((root.child('usuarios').child(auth.uid).child('role').val() === 'admin' && root.child('usuarios').child(auth.uid).child('active').val() !== false) || root.child('prefecturaV2/usuarios').child(auth.uid).child('activo').val() === true)",
+            ".validate": "newData.child('porUid').val() === auth.uid && newData.child('mat').val() === $mat"
+          }
+        }
+      },
+      "incidencias": {
+        "$fecha": {
+          "$id": {
+            ".write": "auth != null && ((root.child('usuarios').child(auth.uid).child('role').val() === 'admin' && root.child('usuarios').child(auth.uid).child('active').val() !== false) || (root.child('prefecturaV2/usuarios').child(auth.uid).child('activo').val() === true && (root.child('prefecturaV2/usuarios').child(auth.uid).child('rol').val() === 'admin' || (!data.exists() && newData.exists()) || (data.exists() && !newData.exists() && data.child('porUid').val() === auth.uid && now - data.child('ts').val() < 900000))))",
+            ".validate": "newData.child('porUid').val() === auth.uid && newData.hasChildren(['mat', 'tipo', 'ts'])",
+            "ts": {
+              ".validate": "newData.val() <= now"
+            }
+          }
+        }
+      },
+      "tiposExtra": {
+        "$id": {
+          ".write": "auth != null && ((root.child('usuarios').child(auth.uid).child('role').val() === 'admin' && root.child('usuarios').child(auth.uid).child('active').val() !== false) || (root.child('prefecturaV2/usuarios').child(auth.uid).child('activo').val() === true && root.child('prefecturaV2/usuarios').child(auth.uid).child('rol').val() === 'admin') || (((root.child('usuarios').child(auth.uid).child('role').val() === 'admin' && root.child('usuarios').child(auth.uid).child('active').val() !== false) || root.child('prefecturaV2/usuarios').child(auth.uid).child('activo').val() === true) && !data.exists() && newData.child('porUid').val() === auth.uid))",
+          ".validate": "newData.child('label').isString() && newData.child('label').val().length >= 2 && newData.child('label').val().length <= 60"
+        }
+      },
+      "horarios": {
+        ".write": "auth != null && ((root.child('usuarios').child(auth.uid).child('role').val() === 'admin' && root.child('usuarios').child(auth.uid).child('active').val() !== false) || (root.child('prefecturaV2/usuarios').child(auth.uid).child('activo').val() === true && root.child('prefecturaV2/usuarios').child(auth.uid).child('rol').val() === 'admin'))"
+      }
+    }
+  }
+}

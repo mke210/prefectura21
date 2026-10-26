@@ -1,26 +1,24 @@
-// Service worker mínimo para instalar "Prefectura Escolar" como PWA.
-// Sube este archivo (sw.js) a la misma carpeta del repo donde está index.html.
+// Service worker de Prefectura Escolar.
+// Guarda una copia de la app (no de los datos) para que abra rápido aunque el
+// internet de la escuela esté lento. Los datos siempre vienen de Firebase.
+const CACHE = 'prefectura21-v2-3';
+const ARCHIVOS = ['./', './index.html', './escudo.png', './icon-192.png', './icon-512.png', './manifest.webmanifest'];
 
-const CACHE_NAME = 'prefectura-21n-v1';
-
-self.addEventListener('install', (event) => {
-  self.skipWaiting();
+self.addEventListener('install', e => {
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ARCHIVOS)).then(() => self.skipWaiting()));
 });
-
-self.addEventListener('activate', (event) => {
-  event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))
-    )
-  );
-  self.clients.claim();
+self.addEventListener('activate', e => {
+  e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim()));
 });
-
-// Network-first: la app depende de datos en vivo de Firebase,
-// así que no cacheamos agresivamente, solo permitimos que la
-// app sea "instalable" y funcione offline como último recurso.
-self.addEventListener('fetch', (event) => {
-  event.respondWith(
-    fetch(event.request).catch(() => caches.match(event.request))
+// Solo atiende archivos de la propia app; Firebase y Google pasan directo.
+self.addEventListener('fetch', e => {
+  const url = new URL(e.request.url);
+  if (e.request.method !== 'GET' || url.origin !== location.origin) return;
+  // Red primero (para recibir actualizaciones), copia guardada si no hay internet.
+  e.respondWith(
+    fetch(e.request).then(r => {
+      if (r.ok) { const copia = r.clone(); caches.open(CACHE).then(c => c.put(e.request, copia)); }
+      return r;
+    }).catch(() => caches.match(e.request).then(r => r || caches.match('./index.html')))
   );
 });
