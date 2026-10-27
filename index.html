@@ -68,6 +68,23 @@ header.barra img{width:36px;height:auto;background:#fff;border-radius:8px;paddin
 .dias-horario{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
 .dias-horario button{border:1px solid var(--borde,#cbd5e1);background:#fff;border-radius:999px;padding:6px 12px;font-weight:700;font-size:13px;color:var(--marino);cursor:pointer}
 .dias-horario button.activo{background:var(--marino);color:#fff;border-color:var(--marino)}
+.alerta-mod{position:fixed;inset:0;z-index:9999;background:#0b1f4d;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;gap:18px;animation:parpadeo 1s ease-in-out 4}
+.alerta-mod.receso{background:#92400e}
+.alerta-mod.salida{background:#14532d}
+.alerta-mod .hora{font-size:clamp(48px,12vw,110px);font-weight:900;line-height:1}
+.alerta-mod .tit{font-size:clamp(24px,5vw,44px);font-weight:900;letter-spacing:.5px}
+.alerta-mod .turnos{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:14px;width:100%;max-width:1000px}
+.alerta-mod .turno{background:rgba(255,255,255,.12);border:2px solid rgba(255,255,255,.35);border-radius:18px;padding:16px 18px}
+.alerta-mod .turno h3{margin:0 0 8px;font-size:clamp(20px,3.5vw,30px)}
+.alerta-mod .turno div{font-size:clamp(17px,3vw,26px);font-weight:700;line-height:1.35}
+.alerta-mod button{font-size:22px;font-weight:900;padding:16px 36px;border-radius:14px;border:0;background:#fff;color:#0b1f4d;cursor:pointer}
+@keyframes parpadeo{0%,100%{filter:none}50%{filter:brightness(1.6)}}
+.ult-cambio{font-size:12px;color:var(--texto-3);margin:-4px 0 10px}
+.ult-cambio b{color:var(--marino)}
+.aviso-ajeno{background:#fef3c7;border:1px solid #fcd34d;color:#92400e;border-radius:12px;padding:10px 14px;margin-bottom:12px;font-weight:700;display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.bit-it{display:grid;grid-template-columns:110px 1fr;gap:4px 12px;padding:8px 0;border-bottom:1px solid var(--borde,#e2e8f0);font-size:13px}
+.bit-it .t{color:var(--texto-3);font-weight:700}
+.bit-it .a{color:var(--marino)}
 .clase-ahora{margin-top:8px;font-size:13px;font-weight:700;padding:6px 10px;border-radius:8px;background:#ede9fe;color:#5b21b6;display:inline-block}
 .horario-dia td.ahora{background:#ede9fe;font-weight:800}
 .btn-salir{background:transparent;border:1px solid rgba(255,255,255,.35);color:#fff;border-radius:8px;padding:5px 10px;font-size:12px}
@@ -326,6 +343,8 @@ textarea.campo{min-height:80px;resize:vertical}
           <span style="flex:1"></span>
           <button class="btn btn-claro btn-sm" id="dbImprimir">🖨️ Imprimir</button>
           <button class="btn btn-sm" id="dbWord">📄 Descargar Word</button>
+          <button class="btn btn-claro btn-sm" id="dbDetImp">🖨️ Entradas con detalles</button>
+          <button class="btn btn-sm" id="dbDetWord">📄 Word: entradas con detalles</button>
         </div>
       </div>
       <div id="dbContenido"></div>
@@ -341,6 +360,7 @@ textarea.campo{min-height:80px;resize:vertical}
 
 <div id="capas"></div>
 <div id="toasts"></div>
+<div id="alertaModulo" class="alerta-mod oculto" role="alertdialog" aria-live="assertive"></div>
 
 <!-- Lector de QR (jsQR 1.4.0, licencia Apache 2.0). Se ejecuta en un hilo aparte
      para que la cámara nunca se trabe. Va incrustado porque algunas redes escolares
@@ -368,9 +388,11 @@ const firebaseConfig = {
   messagingSenderId: "816617255445",
   appId: "1:816617255445:web:6d3a1f587c9dbab381141c"
 };
-firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
-const db = firebase.database();
+/* Prefectura usa su PROPIA sesión (app con nombre "prefectura"). Así, entrar o salir aquí
+   no cierra ni cambia la sesión de Credenciales aunque estén en el mismo sitio o navegador. */
+const appPref = firebase.initializeApp(firebaseConfig, 'prefectura');
+const auth = appPref.auth();
+const db = appPref.database();
 // App secundaria: solo para crear cuentas de prefectas sin cerrar la sesión del administrador.
 const auth2 = firebase.initializeApp(firebaseConfig, 'altas').auth();
 const SV = firebase.database.ServerValue.TIMESTAMP;
@@ -420,7 +442,8 @@ const CONFIG_DEFECTO = {
   responsable: '',
   esquemas: { recorte40: ESQUEMA_RECORTE40 },
   calendario: {},
-  suspensiones: {}
+  suspensiones: {},
+  alertasModulo: 'siempre'
 };
 const MOTIVOS_SUSPENSION = ['Consejo Técnico Escolar','Día festivo','Suspensión oficial','Vacaciones','Otro'];
 
@@ -434,7 +457,7 @@ const S = {
   hoy: '',
   entradas:{}, salidas:{}, anticipadas:{}, faltas:{}, incid:{}, // incid: fecha -> id -> registro
   anticipadasAll:{}, faltasAll:{},
-  usuariosPref:{}, tiposExtra:{}, horarios:{},
+  usuariosPref:{}, tiposExtra:{}, horarios:{}, bitacora:{},
   modo: 'entrada',
   actual: null,      // {mat, fecha}
   recientes: [],
@@ -525,7 +548,13 @@ $('formLogin').addEventListener('submit', async e => {
   $('lgErr').textContent = '';
   $('lgBtn').disabled = true; $('lgBtn').textContent = 'Entrando...';
   try{
-    await auth.signInWithEmailAndPassword(usuarioACorreo(u), p);
+    try{ await auth.signInWithEmailAndPassword(usuarioACorreo(u), p); }
+    catch(err){
+      // Si la prefecta escribió solo su nombre (ej. "Barbara"), se intenta con "prefecta.barbara".
+      const malo = ['auth/invalid-credential','auth/user-not-found','auth/wrong-password','auth/invalid-login-credentials'].includes(err.code);
+      if(malo && !/^prefecta\./i.test(u) && !u.includes('@')) await auth.signInWithEmailAndPassword(usuarioACorreo('prefecta.' + u), p);
+      else throw err;
+    }
   }catch(err){
     let m = 'Usuario o contraseña incorrectos.';
     if(err.code === 'auth/too-many-requests') m = 'Demasiados intentos. Espera unos minutos.';
@@ -542,7 +571,8 @@ function salir(msg){
   S.refs.forEach(r => r.off()); S.refs = [];
   auth.signOut().catch(()=>{});
   // Borra de la pantalla todo lo de la sesión anterior (nada queda visible para el siguiente usuario).
-  S.negados = {}; $('barraPermiso').classList.add('oculto');
+  cerrarAlertaModulo();
+  S.negados = {}; $('barraPermiso').classList.add('oculto'); S.bitacora = {}; S.ajBase = null;
   S.user = null; S.actual = null; S.recientes = []; S.usuariosPref = {}; S.tiposExtra = {}; S.horarios = HORARIO_OFICIAL;
   S.entradas = {}; S.salidas = {}; S.anticipadas = {}; S.faltas = {}; S.incid = {}; S.anticipadasAll = {}; S.faltasAll = {};
   $('capas').innerHTML = ''; $('ajContenido').innerHTML = ''; $('dbContenido').innerHTML = '';
@@ -679,6 +709,7 @@ function iniciarApp(){
   });
   escuchar(db.ref(ROOT+'/anticipadas'), 'value', s => { S.anticipadasAll = s.val() || {}; S.anticipadas = S.anticipadasAll[S.hoy] || {}; refrescarTodo(); });
   escuchar(db.ref(ROOT+'/faltas'), 'value', s => { S.faltasAll = s.val() || {}; S.faltas = S.faltasAll[S.hoy] || {}; refrescarTodo(); });
+  escuchar(db.ref(ROOT+'/bitacora').orderByKey().limitToLast(400), 'value', s => { S.bitacora = s.val() || {}; avisoCambioAjeno(); });
   escuchar(db.ref(ROOT+'/tiposExtra'), 'value', s => { S.tiposExtra = s.val() || {}; refrescarTodo(); if(vistaActual()==='ajustes') renderAjustes(); });
   escuchar(db.ref(ROOT+'/horarios'), 'value', s => { const v = s.val(); S.horarios = v && Object.keys(v).length ? v : HORARIO_OFICIAL; refrescarTodo(); });
 
@@ -688,13 +719,14 @@ function iniciarApp(){
 
   suscribirDia();
   if(!timerDia) timerDia = setInterval(() => { if(S.user && fechaLocal() !== S.hoy) suscribirDia(); }, 30000);
+  if(!timerAlertas) timerAlertas = setInterval(revisarAlertas, 5000);
 
   $('dbFecha').value = fechaLocal();
   $('dbTurno').value = filtroTurno();
   irA('escanear');
 }
 
-let refsDia = [], timerDia = null;
+let refsDia = [], timerDia = null, timerAlertas = null;
 function pintarTurno(){
   const t = turnoTrabajo();
   $('selTurno').value = t;
@@ -931,6 +963,77 @@ function horarioTurno(turno, fecha){
   }
   return {esquema: null, modulos: listaMods(PERIODOS_NORMALES[turno]), entrada: normal.entrada || '', salida: normal.salida || ''};
 }
+
+/* =====================================================================
+   ALERTAS DE CAMBIO DE MÓDULO (pantalla completa + sonido de 4 segundos)
+   Usa el horario del día: el normal o el alterno programado para esa fecha.
+===================================================================== */
+function eventosModulos(fecha){
+  if(suspensionDe(fecha)) return [];
+  const dow = new Date(fecha + 'T12:00:00').getDay(); if(dow === 0 || dow === 6) return [];
+  const modo = S.config.alertasModulo || 'siempre';
+  if(modo === 'nunca' || (modo === 'alterno' && !esquemaDe(fecha))) return [];
+  const ev = {};
+  const add = (h, t, txt, clase) => { const e = ev[h] = ev[h] || {turnos:{}, clase:''}; (e.turnos[t] = e.turnos[t] || []).push(txt); if(clase === 'salida' || (clase === 'receso' && e.clase !== 'salida')) e.clase = clase; };
+  ['Matutino','Mixto'].forEach(t => {
+    const m = horarioTurno(t, fecha).modulos; if(!m.length) return;
+    m.forEach((x, i) => {
+      const prev = m[i-1];
+      if(!prev) add(x.ini, t, `▶️ Inicia el Módulo 1 (${x.ini}–${x.fin})`);
+      else if(prev.fin === x.ini) add(x.ini, t, `Termina el Módulo ${i} · ▶️ Inicia el Módulo ${i+1} (${x.ini}–${x.fin})`);
+      else {
+        add(prev.fin, t, `Termina el Módulo ${i} · 🍎 Inicia el RECESO (${prev.fin}–${x.ini})`, 'receso');
+        add(x.ini, t, `Termina el RECESO · ▶️ Inicia el Módulo ${i+1} (${x.ini}–${x.fin})`);
+      }
+    });
+    const u = m[m.length-1];
+    add(u.fin, t, `Termina el Módulo ${m.length} · 🏁 SALIDA del turno`, 'salida');
+  });
+  return Object.keys(ev).sort().map(h => Object.assign({h}, ev[h]));
+}
+function alertasDispositivo(){ try{ return localStorage.getItem('pref_alertas') !== 'no'; }catch(e){ return true; } }
+function timbre(){
+  try{
+    desbloquearAudio(); if(!audioCtx) return;
+    const t = audioCtx.currentTime;
+    for(let i = 0; i < 16; i++){ tono(i % 2 ? 660 : 880, t + i*0.25, 0.22, 0.5); tono(i % 2 ? 1320 : 1760, t + i*0.25, 0.12, 0.15, 'sine'); }   // 4 segundos
+  }catch(e){}
+  if(navigator.vibrate) navigator.vibrate([400,150,400,150,400,150,400,150,400]);
+}
+let alertaCierre = null;
+function mostrarAlertaModulo(e, prueba){
+  const div = $('alertaModulo');
+  div.className = 'alerta-mod ' + (e.clase || '');
+  const esq = esquemaDe(S.hoy);
+  div.innerHTML = `
+    <div class="tit">🔔 ${e.clase === 'receso' ? 'CAMBIO DE MÓDULO · RECESO' : e.clase === 'salida' ? 'CAMBIO DE MÓDULO · SALIDA' : 'CAMBIO DE MÓDULO'}${prueba ? ' (prueba)' : ''}</div>
+    <div class="hora">${escH(e.h)}</div>
+    ${esq ? `<div style="font-weight:800;font-size:20px">✂️ ${escH(esq.nombre)}</div>` : ''}
+    <div class="turnos">${['Matutino','Mixto'].filter(t => e.turnos[t]).map(t => `<div class="turno"><h3>${t === 'Matutino' ? '☀️' : '🌤️'} Turno ${t}</h3>${e.turnos[t].map(x => `<div>${escH(x)}</div>`).join('')}</div>`).join('')}</div>
+    <button id="alertaOk">✅ Enterado</button>`;
+  $('alertaOk').onclick = cerrarAlertaModulo;
+  timbre();
+  clearTimeout(alertaCierre);
+  alertaCierre = setTimeout(cerrarAlertaModulo, 3*60*1000);
+}
+function cerrarAlertaModulo(){ $('alertaModulo').classList.add('oculto'); clearTimeout(alertaCierre); }
+const alertasHechas = new Set();
+let alertasIniciadas = '';
+function revisarAlertas(){
+  if(!S.user || !alertasDispositivo()) return;
+  const hoy = fechaLocal(), ahora = new Date(), seg = ahora.getHours()*3600 + ahora.getMinutes()*60 + ahora.getSeconds();
+  const evs = eventosModulos(hoy);
+  if(alertasIniciadas !== hoy){   // al abrir la app no suenan los cambios que ya pasaron
+    alertasIniciadas = hoy;
+    evs.forEach(e => { if(aMin(e.h)*60 + 90 < seg) alertasHechas.add(hoy + '|' + e.h); });
+  }
+  evs.forEach(e => {
+    const k = hoy + '|' + e.h, dif = seg - aMin(e.h)*60;
+    if(dif >= 0 && dif < 90 && !alertasHechas.has(k)){ alertasHechas.add(k); mostrarAlertaModulo(e); }
+  });
+}
+// El navegador solo deja sonar si antes se tocó la pantalla: se activa el audio con el primer toque.
+['pointerdown','keydown'].forEach(ev => document.addEventListener(ev, desbloquearAudio, {passive:true}));
 
 function agregarReciente(mat, modo, estado, texto){
   S.recientes.unshift({mat, modo, estado, texto, hora: horaLocal()});
@@ -1176,7 +1279,7 @@ function alternarIncidencia(mat, tipo, nota){
     if(!mio && !esAdmin()){ toast('Este reporte ya está registrado. Solo un administrador puede quitarlo.', 'warn'); return; }
     if(!confirm('¿Quitar el reporte "' + (r.label||tipo) + '" de ' + a.nombre + '?')) return;
     db.ref(`${ROOT}/incidencias/${S.hoy}/${r.id}`).remove()
-      .then(() => toast('Reporte quitado'))
+      .then(() => { toast('Reporte quitado'); registrarCambio('Reportes borrados', 'reporte.' + r.id, `Quitó el reporte "${r.label||tipo}" de ${a.nombre} (${grupoDe(a)}) de hoy, registrado por ${r.porNombre||'—'}`); })
       .catch(err => toast('No se pudo quitar: ' + errorFirebase(err), 'err'));
     return;
   }
@@ -1361,12 +1464,13 @@ function abrirNuevaSituacion(mat){
         const ref = db.ref(ROOT+'/tiposExtra').push();
         const nuevo = {label, emoji: emoji(), activo:true, porUid:S.user.uid, porNombre:S.user.nombre, ts:SV};
         S.tiposExtra[ref.key] = Object.assign({}, nuevo, {ts: Date.now()});
-        ref.set(nuevo).then(() => toast('Nuevo botón disponible: ' + label)).catch(err => { delete S.tiposExtra[ref.key]; refrescarTodo(); toast('No se guardó el botón: ' + errorFirebase(err), 'err'); });
+        ref.set(nuevo).then(() => { toast('Nuevo botón disponible: ' + label); registrarCambio('Tipos de reporte', 'tipo.x_' + ref.key, 'Agregó el tipo de reporte "' + label + '"'); }).catch(err => { delete S.tiposExtra[ref.key]; refrescarTodo(); toast('No se guardó el botón: ' + errorFirebase(err), 'err'); });
         t = {id:'x_'+ref.key, label, emoji: emoji()};
       } else {
         t = {id:'o_' + norm(label).replace(/[^a-z0-9]+/g,'_').slice(0,40), label, emoji: emoji()};
       }
     }
+    if(incidenciasDe(mat, S.hoy).some(r => r.tipo === t.id)){ toast('ℹ️ ' + a.nombre + ' ya tiene hoy el reporte "' + t.label + '"', 'warn'); capa.remove(); return; }
     guardarIncidencia(mat, t, nota);
     capa.remove();
   });
@@ -1614,8 +1718,14 @@ async function abrirExpediente(mat){
     const b = e.target.closest('[data-borrar]');
     if(b){
       const [f, id] = b.dataset.borrar.split('|');
-      if(!confirm('¿Borrar este reporte del historial? No se puede deshacer.')) return;
-      db.ref(`${ROOT}/incidencias/${f}/${id}`).remove().then(() => { toast('Reporte borrado'); capa.remove(); abrirExpediente(mat); }).catch(err => toast(errorFirebase(err),'err'));
+      const r = (S.incid[f]||{})[id];
+      if(!r){ yaHecho('reporte.' + id, 'Ese reporte ya había sido borrado'); capa.remove(); abrirExpediente(mat); return; }
+      if(!confirm('¿Borrar este reporte del historial? No se puede deshacer. Quedará anotado en la bitácora.')) return;
+      db.ref(`${ROOT}/incidencias/${f}/${id}`).remove().then(() => {
+        toast('Reporte borrado');
+        registrarCambio('Reportes borrados', 'reporte.' + id, `Borró el reporte "${r.label||r.tipo}" de ${r.nombre||mat} (${grupoDe(r)}) del ${fechaCorta(f)}, registrado por ${r.porNombre||'—'}`);
+        capa.remove(); abrirExpediente(mat);
+      }).catch(err => toast(errorFirebase(err),'err'));
     }
   });
 
@@ -1888,6 +1998,39 @@ function documentoInforme(c){
     <div class="firmas"><div>${escH(S.config.responsable||'Prefectura')}<br>Prefectura</div><div>Vo. Bo. Dirección</div></div>
     <div class="pie">Generado el ${escH(fechaLarga(fechaLocal()))} ${escH(horaLocal())} · Prefectura Escolar · Powered by elprofe chan</div>`;
 }
+/* Reporte general: alumnos que ENTRARON con algún detalle (uniforme, zapatos, cabello…), por grupo. */
+function documentoDetalles(c){
+  const porAlumno = {};
+  c.incid.forEach(r => { (porAlumno[r.mat] = porAlumno[r.mat] || []).push(r); });
+  const filas = Object.entries(porAlumno).map(([mat, rs]) => {
+    const a = S.alumnos[mat] || {nombre: rs[0].nombre, grado: rs[0].grado, grupo: rs[0].grupo, turno: rs[0].turno, mat};
+    const ent = (c.d.entradas||{})[mat];
+    return {mat, a, ent, rs: rs.sort((x,y) => String(x.hora).localeCompare(String(y.hora)))};
+  }).filter(x => !c.turno || (x.a.turno === c.turno))
+    .sort((x,y) => grupoDe(x.a).localeCompare(grupoDe(y.a), 'es', {numeric:true}) || String(x.a.nombre).localeCompare(String(y.a.nombre)));
+  const grupos = {};
+  filas.forEach(f => (grupos[grupoDe(f.a)] = grupos[grupoDe(f.a)] || []).push(f));
+  const conEntrada = filas.filter(f => f.ent).length;
+  const porTipo = {}; filas.forEach(f => f.rs.forEach(r => porTipo[r.label||r.tipo] = (porTipo[r.label||r.tipo]||0) + 1));
+  return encabezadoDoc('Reporte de entrada: alumnos con detalles', fechaLarga(c.fecha) + (c.turno ? ' · Turno ' + c.turno : ' · Ambos turnos')) + `
+    <table class="kpis"><tr><td><b>${c.llegaron.length}</b>Entraron</td><td><b>${filas.length}</b>Alumnos con detalles</td><td><b>${filas.reduce((n,f) => n + f.rs.length, 0)}</b>Detalles registrados</td><td><b>${Object.keys(grupos).length}</b>Grupos</td></tr></table>
+    <h2>Detalles por tipo</h2>
+    <table><tr><th>Detalle</th><th>Cantidad</th></tr>${Object.entries(porTipo).sort((x,y) => y[1]-x[1]).map(([k,v]) => `<tr><td>${escH(k)}</td><td class="n">${v}</td></tr>`).join('') || '<tr><td colspan="2">Sin detalles</td></tr>'}</table>
+    ${Object.keys(grupos).length ? Object.entries(grupos).map(([g, fs]) => `
+      <h2>Grupo ${escH(g)} · ${escH(fs[0].a.turno||'')} <span style="font-weight:400">(${fs.length} alumno${fs.length>1?'s':''})</span></h2>
+      <table><tr><th>#</th><th>Alumno</th><th>Matrícula</th><th>Entrada</th><th>Detalles</th><th>Observaciones</th><th>Registró</th></tr>
+      ${fs.map((f, i) => `<tr><td class="n">${i+1}</td><td>${escH(f.a.nombre)}</td><td>${escH(f.mat)}</td><td>${f.ent ? escH(f.ent.hora) + (f.ent.retardo ? ' ⏰ retardo' : '') : 'Sin entrada registrada'}</td><td>${f.rs.map(r => escH((r.emoji ? r.emoji + ' ' : '') + (r.label||r.tipo))).join('<br>')}</td><td>${f.rs.map(r => escH([r.detalle, r.nota].filter(Boolean).join(' · '))).filter(Boolean).join('<br>')}</td><td>${escH([...new Set(f.rs.map(r => r.porNombre).filter(Boolean))].join(', '))}</td></tr>`).join('')}
+      </table>`).join('') : '<p>Ningún alumno tuvo detalles este día. 👍</p>'}
+    <p style="font-size:11px">${conEntrada} de ${filas.length} alumnos con detalles tienen entrada registrada.</p>
+    <div class="firmas"><div>${escH(S.config.responsable||'Prefectura')}<br>Prefectura</div><div>Vo. Bo. Dirección</div></div>
+    <div class="pie">Generado el ${escH(fechaLarga(fechaLocal()))} ${escH(horaLocal())} por ${escH(S.user.nombre)} · Prefectura Escolar · Powered by elprofe chan</div>`;
+}
+$('dbDetImp').addEventListener('click', () => { if(ultimoCalculo) imprimirHTML('Entradas con detalles ' + ultimoCalculo.fecha, documentoDetalles(ultimoCalculo)); });
+$('dbDetWord').addEventListener('click', () => {
+  if(!ultimoCalculo) return;
+  descargarWord(`Entradas_con_detalles_${ultimoCalculo.fecha}${ultimoCalculo.turno?'_'+ultimoCalculo.turno:''}`, 'Entradas con detalles ' + ultimoCalculo.fecha, documentoDetalles(ultimoCalculo));
+  toast('Reporte descargado. Ábrelo con Word.');
+});
 $('dbImprimir').addEventListener('click', () => { if(ultimoCalculo) imprimirHTML('Informe ' + ultimoCalculo.fecha, documentoInforme(ultimoCalculo)); });
 $('dbWord').addEventListener('click', () => {
   if(!ultimoCalculo) return;
@@ -1914,11 +2057,20 @@ function renderAjustes(){
   const yaDados = new Set(usuarios.map(([,u]) => norm(u.nombre).split(' ')[0]));
   const sugeridas = PREFECTAS_SUGERIDAS.filter(n => !yaDados.has(norm(n)));
   const extras = tiposTodos().filter(t => t.origen === 'extra');
+  S.ajTs = Date.now(); S.ajBase = fotoAjustes();
+  const bitPersonas = [...new Set(listaBitacora().map(e => e.porNombre))].sort();
+  const bitAreas = [...new Set(listaBitacora().map(e => e.area))].sort();
   $('ajContenido').innerHTML = `
+    <div class="aviso-ajeno oculto" id="ajAviso"></div>
     <div class="tarjeta">
       <h2>👤 Mi cuenta</h2>
       <div class="nota">Sesión iniciada como <b>${escH(S.user.nombre)}</b> (${escH(S.user.usuario)}) · ${adm ? 'Administrador' : 'Prefecta / Prefecto'}</div>
       <div class="fila" style="margin-bottom:10px"><span>Turno asignado:</span><b>${escH(S.user.turnoDefecto === 'Ambos' ? 'Ambos turnos' : S.user.turnoDefecto)}</b><span class="nota" style="margin:0">· Hoy cubres <b>${escH(turnoTrabajo() === 'Ambos' ? 'ambos turnos' : turnoTrabajo())}</b>. Si te toca otro turno hoy, cámbialo en el selector de arriba; mañana vuelve solo al asignado.</span></div>
+      <div class="fila" style="margin-bottom:10px;align-items:center">
+        <label style="display:flex;gap:8px;align-items:center;font-weight:700"><input type="checkbox" id="alDisp" ${alertasDispositivo() ? 'checked' : ''}> 🔔 Alertas de cambio de módulo en este dispositivo</label>
+        <button class="btn btn-claro btn-sm" id="alProbar">Probar alerta</button>
+      </div>
+      <div class="nota" id="alHoy"></div>
       <div class="fila">
         <input class="campo" type="password" id="pwActual" placeholder="Contraseña actual" autocomplete="current-password">
         <input class="campo" type="password" id="pwNueva" placeholder="Nueva contraseña (mín. 6)" autocomplete="new-password">
@@ -1928,6 +2080,7 @@ function renderAjustes(){
     ${adm ? `
     <div class="tarjeta">
       <h2>👥 Prefectas y prefectos</h2>
+      ${lineaUltimo('Prefectas')}
       <div class="nota">Solo estas personas (y los administradores de Credenciales) pueden entrar a Prefectura. Estas cuentas <b>no</b> tienen acceso al Sistema de Credenciales. Si la persona ya tiene cuenta en Credenciales, escribe su usuario y su contraseña actual para darle acceso aquí también.</div>
       <div class="fila">
         <input class="campo" id="nuUsuario" placeholder="Usuario (ej. prefecta.luisa)" autocapitalize="none" spellcheck="false">
@@ -1942,30 +2095,38 @@ function renderAjustes(){
       <div class="lista-alumnos" style="margin-top:10px">
         ${usuarios.length ? usuarios.map(([uid,u]) => `<div class="it" style="flex-wrap:wrap"><div class="n"><b>${escH(u.nombre||u.usuario)}</b><small>${escH(u.usuario)} · ${u.rol==='admin'?'Administrador':'Prefecta/o'}${u.activo?'':' · <b style="color:var(--err)">Desactivado</b>'}</small></div>
           <select class="campo" data-turno-u="${escH(uid)}" style="max-width:150px;padding:6px 8px" title="Turno asignado">${opsTurno(u.turno||'Ambos')}</select>
-          <button class="btn btn-claro btn-sm" data-u="${escH(uid)}" data-op="activo">${u.activo?'Desactivar':'Activar'}</button>
-          <button class="btn btn-claro btn-sm" data-u="${escH(uid)}" data-op="rol">${u.rol==='admin'?'Hacer prefecta/o':'Hacer admin'}</button>
+          <button class="btn btn-claro btn-sm" data-u="${escH(uid)}" data-op="activo" data-want="${u.activo?'0':'1'}">${u.activo?'Desactivar':'Activar'}</button>
+          <button class="btn btn-claro btn-sm" data-u="${escH(uid)}" data-op="rol" data-want="${u.rol==='admin'?'prefecta':'admin'}">${u.rol==='admin'?'Hacer prefecta/o':'Hacer admin'}</button>
           <button class="btn btn-rojo btn-sm" data-u="${escH(uid)}" data-op="quitar">Quitar acceso</button></div>`).join('') : '<div class="vacio">Aún no hay prefectas dadas de alta.</div>'}
       </div>
     </div>` : ''}
     <div class="tarjeta">
       <h2>📋 Tipos de reporte</h2>
+      ${lineaUltimo('Tipos de reporte')}
       <div class="nota">Aparecen como botones rápidos al escanear. Cualquier prefecta puede agregar una situación nueva aquí o desde el botón <b>➕ Otra situación</b> al escanear. ${adm?'Al ocultar uno, el historial ya registrado se conserva.':'Solo un administrador puede ocultarlos.'}</div>
       <div class="lista-alumnos" id="ajTipos">
-        ${(c.tipos||[]).map((t,i) => `<div class="it"><span style="font-size:22px">${escH(t.emoji||'⚠️')}</span><div class="n"><b>${escH(t.label)}</b>${t.activo===false?'<small>Oculto</small>':''}</div>${adm?`<button class="btn btn-claro btn-sm" data-t="${i}" data-op="vis">${t.activo===false?'Mostrar':'Ocultar'}</button>`:''}</div>`).join('')}
-        ${extras.map(t => `<div class="it"><span style="font-size:22px">${escH(t.emoji)}</span><div class="n"><b>${escH(t.label)}</b><small>Agregado por ${escH(t.porNombre||'una prefecta')}${t.activo===false?' · Oculto':''}</small></div>${adm?`<button class="btn btn-claro btn-sm" data-x="${escH(t.key)}" data-op="xvis">${t.activo===false?'Mostrar':'Ocultar'}</button>`:''}</div>`).join('')}
+        ${(c.tipos||[]).map((t,i) => `<div class="it"><span style="font-size:22px">${escH(t.emoji||'⚠️')}</span><div class="n"><b>${escH(t.label)}</b>${t.activo===false?'<small>Oculto</small>':''}</div>${adm?`<button class="btn btn-claro btn-sm" data-t="${i}" data-op="vis" data-want="${t.activo===false?'1':'0'}">${t.activo===false?'Mostrar':'Ocultar'}</button>`:''}</div>`).join('')}
+        ${extras.map(t => `<div class="it"><span style="font-size:22px">${escH(t.emoji)}</span><div class="n"><b>${escH(t.label)}</b><small>Agregado por ${escH(t.porNombre||'una prefecta')}${t.activo===false?' · Oculto':''}</small></div>${adm?`<button class="btn btn-claro btn-sm" data-x="${escH(t.key)}" data-op="xvis" data-want="${t.activo===false?'1':'0'}">${t.activo===false?'Mostrar':'Ocultar'}</button>`:''}</div>`).join('')}
       </div>
       <div class="fila" style="margin-top:10px"><input class="campo" id="tEmoji" placeholder="Emoji" style="max-width:90px;flex:0 0 90px" maxlength="4"><input class="campo" id="tLabel" placeholder="Nueva situación (ej. Uñas pintadas)" maxlength="60"><button class="btn btn-sm" id="tAgregar">Agregar</button></div>
     </div>
     <div class="tarjeta">
       <h2>⏰ Horarios</h2>
+      ${lineaUltimo('Ajustes generales')}
       <div class="nota">La hora de salida evita registrar salidas por error antes de tiempo. La hora de entrada es opcional: si la llenas, la app marca <b>retardo</b> a quien llegue después de la hora + tolerancia.</div>
       <div class="tabla-wrap"><table><thead><tr><th>Turno</th><th>Entrada (opcional)</th><th>Salida</th></tr></thead><tbody>
         ${['Matutino','Mixto'].map(t => `<tr><td><b>${t}</b></td><td><input type="time" class="campo" data-h="${t}|entrada" value="${escH((c.horarios[t]||{}).entrada||'')}" ${dis}></td><td><input type="time" class="campo" data-h="${t}|salida" value="${escH((c.horarios[t]||{}).salida||'')}" ${dis}></td></tr>`).join('')}
       </tbody></table></div>
+      <div class="fila" style="margin-top:10px"><span>🔔 Alertas de cambio de módulo (pantalla completa y sonido)</span><select class="campo" id="ajAlertas" style="max-width:300px" ${dis}>
+        <option value="siempre" ${(c.alertasModulo||'siempre')==='siempre'?'selected':''}>Todos los días con clases</option>
+        <option value="alterno" ${c.alertasModulo==='alterno'?'selected':''}>Solo días con horario alterno (recorte)</option>
+        <option value="nunca" ${c.alertasModulo==='nunca'?'selected':''}>Apagadas</option>
+      </select></div>
       <div class="fila" style="margin-top:10px"><span>Tolerancia (minutos)</span><input type="number" class="campo" id="ajTol" min="0" max="60" value="${Number(c.tolerancia||0)}" style="max-width:110px" ${dis}></div>
     </div>
     <div class="tarjeta">
       <h2>🚫 Días sin clases (suspensión)</h2>
+      ${lineaUltimo('Días sin clases')}
       <div class="nota">Consejo Técnico, días festivos, suspensiones oficiales o vacaciones. Esos días la app avisa que no hay clases, no busca clase ni módulo y no cuenta faltas en la asistencia del alumno.</div>
       ${adm ? `<div class="fila"><span>Desde</span><input type="date" class="campo" id="susDesde" value="${escH(S.hoy)}" style="max-width:170px"><span>hasta</span><input type="date" class="campo" id="susHasta" style="max-width:170px" title="Opcional: para varios días seguidos"><select class="campo" id="susMotivo" style="max-width:220px">${MOTIVOS_SUSPENSION.map(m => `<option>${escH(m)}</option>`).join('')}</select><input class="campo" id="susOtro" placeholder="Detalle (opcional)" maxlength="60"><button class="btn btn-sm" id="susAgregar">Agregar</button></div>
       <div class="acciones"><button class="btn btn-claro btn-sm" id="susCTE">📅 Agregar los últimos viernes de cada mes (Consejo Técnico) del ciclo escolar</button></div>` : ''}
@@ -1973,6 +2134,7 @@ function renderAjustes(){
     </div>
     <div class="tarjeta">
       <h2>✂️ Horarios alternos (recorte de módulos)</h2>
+      ${lineaUltimo('Horarios alternos')}
       <div class="nota">Para días con horario reducido. Escribe un módulo por renglón (ej. <code>07:00-07:40</code>) y programa la fecha. Ese día la app usa estos módulos para saber en qué clase está cada alumno, la hora de salida y los retardos. El módulo 1 corresponde a la 1ª hora del horario normal del grupo, el 2 a la 2ª, y así sucesivamente.</div>
       ${Object.entries(c.esquemas||{}).map(([id, e]) => `<div class="tarjeta" style="margin:10px 0;box-shadow:none" data-esq="${escH(id)}">
         <div class="fila"><input class="campo" data-esqn="${escH(id)}" value="${escH(e.nombre||id)}" maxlength="60" ${dis}></div>
@@ -2002,8 +2164,30 @@ function renderAjustes(){
       <div class="fila" style="margin-top:10px"><span>Nombre para firmar los informes</span><input class="campo" id="ajResp" value="${escH(c.responsable||'')}" placeholder="Ej. Profra. Luisa Martínez, Jefa de Prefectura" ${dis}></div>
       <div class="fila" style="margin-top:10px"><span>Matrículas de prueba (se pueden escanear varias veces al día)</span><input class="campo" id="ajPruebas" value="${escH(Object.keys(c.pruebas||{}).join(', '))}" ${dis}></div>
       ${adm ? '<div class="acciones"><button class="btn" id="ajGuardar">💾 Guardar ajustes</button></div>' : ''}
-    </div>`;
+    </div>
+    ${adm ? `<div class="tarjeta">
+      <h2>📜 Bitácora de cambios</h2>
+      <div class="nota">Cada cambio en la configuración, en las prefectas y cada reporte borrado queda registrado con quién lo hizo y cuándo. Nadie puede borrar esta bitácora.</div>
+      <div class="fila"><select class="campo" id="bitPersona" style="max-width:220px"><option value="">Todas las personas</option>${bitPersonas.map(n => `<option>${escH(n)}</option>`).join('')}</select><select class="campo" id="bitArea" style="max-width:220px"><option value="">Todas las áreas</option>${bitAreas.map(n => `<option>${escH(n)}</option>`).join('')}</select></div>
+      <div id="bitLista" style="margin-top:8px;max-height:460px;overflow:auto"></div>
+    </div>` : ''}`;
+  if(adm){ renderBitacora(); $('bitPersona').onchange = renderBitacora; $('bitArea').onchange = renderBitacora; }
 
+  const pintarAlHoy = () => {
+    const ev = eventosModulos(S.hoy);
+    $('alHoy').innerHTML = !alertasDispositivo() ? 'Este dispositivo no mostrará las alertas.'
+      : ev.length ? 'Hoy sonará a las: <b>' + ev.map(e => escH(e.h) + (e.clase === 'receso' ? ' (receso)' : e.clase === 'salida' ? ' (salida)' : '')).join(', ') + '</b>' + (esquemaDe(S.hoy) ? ' · ✂️ horario alterno' : '') + '. Deja la app abierta y toca la pantalla una vez para que pueda sonar.'
+      : 'Hoy no hay alertas programadas' + (suspensionDe(S.hoy) ? ' (día sin clases).' : '.');
+  };
+  pintarAlHoy();
+  $('alDisp').addEventListener('change', () => { try{ localStorage.setItem('pref_alertas', $('alDisp').checked ? 'si' : 'no'); }catch(e){} pintarAlHoy(); });
+  $('alProbar').addEventListener('click', () => {
+    const ev = eventosModulos(S.hoy).concat(eventosModulos(sumarDias(S.hoy, 1)));
+    const ahora = horaLocal();
+    const e = ev.find(x => x.h >= ahora && x.clase === 'receso') || ev.find(x => x.clase === 'receso') || ev[0]
+      || {h: ahora, clase:'', turnos:{Matutino:['Termina el Módulo 2 · ▶️ Inicia el Módulo 3'], Mixto:['▶️ Inicia el Módulo 1']}};
+    mostrarAlertaModulo(e, true);
+  });
   $('pwCambiar').addEventListener('click', async () => {
     const act = $('pwActual').value, nue = $('pwNueva').value;
     if(nue.length < 6){ toast('La nueva contraseña debe tener al menos 6 caracteres','warn'); return; }
@@ -2019,9 +2203,10 @@ function renderAjustes(){
     const label = $('tLabel').value.trim().replace(/\s+/g,' ').slice(0,60);
     if(label.length < 3){ toast('Escribe el nombre de la situación','warn'); return; }
     const ya = tiposTodos().find(x => norm(x.label) === norm(label));
-    if(ya){ toast(ya.activo === false ? 'Ya existe pero está oculto' + (esAdmin() ? ': usa "Mostrar"' : '') : 'Ese tipo de reporte ya existe', 'warn'); return; }
-    db.ref(ROOT+'/tiposExtra').push().set({label, emoji: $('tEmoji').value.trim().slice(0,8) || '⚠️', activo:true, porUid:S.user.uid, porNombre:S.user.nombre, ts:SV})
-      .then(() => toast('Situación agregada: ' + label)).catch(e => toast(errorFirebase(e),'err'));
+    if(ya){ toast('ℹ️ "' + ya.label + '" ya existe' + (ya.porNombre ? ' (lo agregó ' + ya.porNombre + ')' : '') + (ya.activo === false ? ', pero está oculto' + (esAdmin() ? ': usa "Mostrar"' : '') : ''), 'warn'); return; }
+    const ref = db.ref(ROOT+'/tiposExtra').push();
+    ref.set({label, emoji: $('tEmoji').value.trim().slice(0,8) || '⚠️', activo:true, porUid:S.user.uid, porNombre:S.user.nombre, ts:SV})
+      .then(() => { toast('Situación agregada: ' + label); registrarCambio('Tipos de reporte', 'tipo.x_' + ref.key, 'Agregó el tipo de reporte "' + label + '"'); }).catch(e => toast(errorFirebase(e),'err'));
   });
   if(!adm) return;
 
@@ -2040,20 +2225,45 @@ function renderAjustes(){
       upd[id] = e;
     });
     if(error){ toast(error, 'warn'); return; }
-    db.ref(ROOT+'/config/esquemas').update(upd).then(() => toast('Horarios alternos guardados')).catch(e => toast(errorFirebase(e),'err'));
+    const normE = e => e ? {nombre: e.nombre || '', Matutino: listaMods(e.Matutino).map(x => x.ini+'-'+x.fin), Mixto: listaMods(e.Mixto).map(x => x.ini+'-'+x.fin)} : null;
+    const base = (S.ajBase && S.ajBase.__esquemas) || {};
+    const cambios = Object.keys(upd).filter(id => !igual(normE(upd[id]), normE((S.config.esquemas||{})[id])));
+    const yaIguales = Object.keys(upd).filter(id => igual(normE(upd[id]), normE((S.config.esquemas||{})[id])) && !igual(normE(base[id]), normE((S.config.esquemas||{})[id])));
+    if(!cambios.length){
+      if(yaIguales.length) yaHecho('esquema.' + yaIguales[0], 'Ese horario alterno ya estaba guardado así');
+      else toast('No hay cambios que guardar', 'warn');
+      return;
+    }
+    const conf = cambios.filter(id => base[id] && !igual(normE(base[id]), normE((S.config.esquemas||{})[id])));
+    if(conf.length && !confirm('Mientras tenías abierta esta pantalla, otra persona cambió:\n' + conf.map(id => '• ' + ((S.config.esquemas[id]||{}).nombre || id) + (ultimoCambio('esquema.'+id) ? ' — ' + quienCuando(ultimoCambio('esquema.'+id)) : '')).join('\n') + '\n\n¿Reemplazarlo con lo que tú escribiste?')){ renderAjustes(); return; }
+    const sel = {}; cambios.forEach(id => sel[id] = upd[id]);
+    db.ref(ROOT+'/config/esquemas').update(sel).then(() => {
+      toast('Horarios alternos guardados');
+      cambios.forEach(id => registrarCambio('Horarios alternos', 'esquema.' + id, `Editó "${sel[id].nombre}": matutino ${sel[id].Matutino.length} módulos (sale ${(listaMods(sel[id].Matutino).pop()||{}).fin||'—'}), mixto ${sel[id].Mixto.length} módulos (sale ${(listaMods(sel[id].Mixto).pop()||{}).fin||'—'})`));
+      S.ajBase = S.ajBase || {}; S.ajBase.__esquemas = Object.assign({}, S.ajBase.__esquemas, JSON.parse(JSON.stringify(sel))); S.ajTs = Date.now();
+    }).catch(e => toast(errorFirebase(e),'err'));
   });
   $('esqNuevo').addEventListener('click', () => {
     const id = 'alt' + Date.now().toString(36);
-    db.ref(ROOT+'/config/esquemas/'+id).set(Object.assign({}, ESQUEMA_RECORTE40, {nombre:'Nuevo horario alterno'})).then(() => toast('Edita los módulos y guarda')).catch(e => toast(errorFirebase(e),'err'));
+    db.ref(ROOT+'/config/esquemas/'+id).set(Object.assign({}, ESQUEMA_RECORTE40, {nombre:'Nuevo horario alterno'})).then(() => { toast('Edita los módulos y guarda'); registrarCambio('Horarios alternos', 'esquema.' + id, 'Creó un horario alterno nuevo'); }).catch(e => toast(errorFirebase(e),'err'));
   });
   $('susAgregar').addEventListener('click', () => {
     const desde = $('susDesde').value, hasta = $('susHasta').value || desde;
     if(!/^\d{4}-\d{2}-\d{2}$/.test(desde) || hasta < desde){ toast('Revisa las fechas','warn'); return; }
     const motivo = ($('susMotivo').value + ($('susOtro').value.trim() ? ': ' + $('susOtro').value.trim() : '')).slice(0,80);
-    const upd = {}; let f = desde, n = 0;
-    while(f <= hasta && n < 120){ const d = new Date(f+'T12:00:00').getDay(); if(d !== 0 && d !== 6) upd[f] = motivo; f = sumarDias(f, 1); n++; }
-    if(!Object.keys(upd).length){ toast('Esas fechas son fin de semana','warn'); return; }
-    db.ref(ROOT+'/config/suspensiones').update(upd).then(() => toast(Object.keys(upd).length + ' día(s) sin clases agregados')).catch(e => toast(errorFirebase(e),'err'));
+    const upd = {}, ya = []; let f = desde, n = 0, habiles = 0;
+    while(f <= hasta && n < 120){
+      const d = new Date(f+'T12:00:00').getDay();
+      if(d !== 0 && d !== 6){ habiles++; if((S.config.suspensiones||{})[f]) ya.push(f); else upd[f] = motivo; }
+      f = sumarDias(f, 1); n++;
+    }
+    if(!habiles){ toast('Esas fechas son fin de semana','warn'); return; }
+    const textoYa = ya.map(x => fechaCorta(x) + ' (' + S.config.suspensiones[x] + (ultimoCambio('suspension.'+x) ? ', lo marcó ' + quienCuando(ultimoCambio('suspension.'+x)) : '') + ')').join('; ');
+    if(!Object.keys(upd).length){ toast('ℹ️ Ya estaba marcado sin clases: ' + textoYa, 'warn'); return; }
+    db.ref(ROOT+'/config/suspensiones').update(upd).then(() => {
+      toast(Object.keys(upd).length + ' día(s) sin clases agregados' + (ya.length ? '. Ya estaban marcados: ' + textoYa : ''), ya.length ? 'warn' : undefined);
+      Object.keys(upd).forEach(x => registrarCambio('Días sin clases', 'suspension.' + x, 'Marcó sin clases el ' + fechaLarga(x) + ' (' + motivo + ')'));
+    }).catch(e => toast(errorFirebase(e),'err'));
   });
   $('susCTE').addEventListener('click', () => {
     const hoy = new Date(), y0 = hoy.getMonth() >= 7 ? hoy.getFullYear() : hoy.getFullYear() - 1;
@@ -2065,38 +2275,144 @@ function renderAjustes(){
       const f = fechaLocal(d);
       if(f >= S.hoy && !(S.config.suspensiones||{})[f]) upd[f] = 'Consejo Técnico Escolar';
     }
-    if(!Object.keys(upd).length){ toast('Ya estaban agregados','warn'); return; }
+    if(!Object.keys(upd).length){ yaHecho('suspension.' + Object.keys(S.config.suspensiones||{}).filter(x => x >= S.hoy).sort()[0], 'Los viernes de Consejo Técnico ya estaban agregados'); return; }
     if(!confirm('Se agregarán ' + Object.keys(upd).length + ' viernes de Consejo Técnico:\n' + Object.keys(upd).map(fechaLarga).join('\n') + '\n\nDespués puedes quitar cualquiera que cambie.')) return;
-    db.ref(ROOT+'/config/suspensiones').update(upd).then(() => toast('Viernes de Consejo Técnico agregados')).catch(e => toast(errorFirebase(e),'err'));
+    db.ref(ROOT+'/config/suspensiones').update(upd).then(() => {
+      toast('Viernes de Consejo Técnico agregados');
+      Object.keys(upd).forEach(x => registrarCambio('Días sin clases', 'suspension.' + x, 'Marcó sin clases el ' + fechaLarga(x) + ' (Consejo Técnico Escolar)'));
+    }).catch(e => toast(errorFirebase(e),'err'));
   });
   $('calProgramar').addEventListener('click', () => {
     const f = $('calFecha').value, id = $('calEsq').value;
     if(!/^\d{4}-\d{2}-\d{2}$/.test(f) || !id) return;
-    db.ref(`${ROOT}/config/calendario/${f}`).set(id).then(() => toast('Programado para ' + fechaLarga(f))).catch(e => toast(errorFirebase(e),'err'));
+    const prev = (S.config.calendario||{})[f], nom = x => ((S.config.esquemas||{})[x]||{}).nombre || x;
+    if(prev === id){ yaHecho('calendario.' + f, '"' + nom(id) + '" ya estaba programado para el ' + fechaLarga(f)); return; }
+    if(prev && !confirm('El ' + fechaLarga(f) + ' ya tiene programado "' + nom(prev) + '"' + (ultimoCambio('calendario.'+f) ? ' (lo programó ' + quienCuando(ultimoCambio('calendario.'+f)) + ')' : '') + '.\n\n¿Cambiarlo por "' + nom(id) + '"?')) return;
+    db.ref(`${ROOT}/config/calendario/${f}`).set(id).then(() => {
+      toast('Programado para ' + fechaLarga(f));
+      registrarCambio('Horarios alternos', 'calendario.' + f, 'Programó "' + nom(id) + '" para el ' + fechaLarga(f) + (prev ? ' (antes: "' + nom(prev) + '")' : ''));
+    }).catch(e => toast(errorFirebase(e),'err'));
   });
   $('ajGuardar').addEventListener('click', () => {
-    const horarios = JSON.parse(JSON.stringify(S.config.horarios));
-    document.querySelectorAll('[data-h]').forEach(i => { const [t,k] = i.dataset.h.split('|'); horarios[t] = horarios[t] || {}; horarios[t][k] = i.value; });
-    const edFisica = {};
-    document.querySelectorAll('[data-ef]').forEach(i => { if(!i.checked) return; const [k,d] = i.dataset.ef.split('|'); (edFisica[k] = edFisica[k] || []).push(Number(d)); });
-    const pruebas = {};
-    $('ajPruebas').value.split(/[,\s]+/).map(x => x.trim()).filter(x => /^[A-Za-z0-9]+$/.test(x)).forEach(x => pruebas[x] = true);
-    db.ref(ROOT+'/config').update({
-      horarios, edFisica, pruebas,
-      tolerancia: Math.max(0, Math.min(60, Number($('ajTol').value)||0)),
-      reincidencia: {n: Math.max(2, Number($('ajRn').value)||3), dias: Math.max(7, Number($('ajRd').value)||30)},
-      responsable: $('ajResp').value.trim().slice(0,120)
-    }).then(() => toast('Ajustes guardados')).catch(e => toast(errorFirebase(e),'err'));
+    const cambios = [], conflictos = [], yaHechos = [];
+    camposAjustes().forEach(f => {
+      const nuevo = f.form(); if(nuevo === null) return;
+      const actual = f.actual(), base = S.ajBase ? S.ajBase[f.clave] : actual;
+      const otroCambio = base !== undefined && !igual(base, actual);   // alguien lo cambió mientras esta pantalla estaba abierta
+      if(igual(nuevo, actual)){ if(otroCambio) yaHechos.push(f); return; }
+      if(otroCambio) conflictos.push({f, actual});
+      cambios.push({f, nuevo, actual});
+    });
+    if(!cambios.length){
+      if(yaHechos.length){ yaHecho(yaHechos[0].clave, yaHechos.map(f => f.etiqueta).join(', ') + (yaHechos.length > 1 ? ' ya estaban así' : ' ya estaba así')); renderAjustes(); }
+      else toast('No hay cambios que guardar: todo está igual.', 'warn');
+      return;
+    }
+    if(conflictos.length && !confirm('Mientras tenías abierta esta pantalla, otra persona cambió:\n' + conflictos.map(c => '• ' + c.f.etiqueta + ': ahora es ' + c.f.txt(c.actual) + (ultimoCambio(c.f.clave) ? ' — ' + quienCuando(ultimoCambio(c.f.clave)) : '')).join('\n') + '\n\n¿Reemplazarlo con lo que tú escribiste?')){ renderAjustes(); return; }
+    const upd = {};
+    cambios.forEach(c => upd[c.f.path] = (c.f.escribir || (v => v))(c.nuevo));
+    db.ref(ROOT+'/config').update(upd).then(() => {
+      cambios.forEach(c => registrarCambio('Ajustes generales', c.f.clave, `${c.f.etiqueta}: ${c.f.txt(c.actual)} → ${c.f.txt(c.nuevo)}`));
+      toast('Ajustes guardados (' + cambios.length + ' cambio' + (cambios.length > 1 ? 's' : '') + ')' + (yaHechos.length ? '. ' + yaHechos.map(f => f.etiqueta).join(', ') + ' ya lo había cambiado otra persona' : ''));
+      S.ajBase = S.ajBase || {}; cambios.concat(yaHechos.map(f => ({f, nuevo: f.actual()}))).forEach(c => S.ajBase[c.f.clave] = c.nuevo); S.ajTs = Date.now();
+    }).catch(e => toast(errorFirebase(e),'err'));
   });
 }
 
 const PREFECTAS_SUGERIDAS = ['Barbara','Zonia','Mirna','Yolanda','Haide'];
+
+/* =====================================================================
+   BITÁCORA DE CAMBIOS: quién cambió qué y cuándo (no se puede borrar)
+===================================================================== */
+let avisoBitacora = false;
+function registrarCambio(area, clave, accion){
+  if(!S.user) return;
+  const ref = db.ref(ROOT+'/bitacora').push();
+  const e = {ts: SV, porUid: S.user.uid, porNombre: S.user.nombre, area, clave: clave || '', accion: String(accion).slice(0,300)};
+  S.bitacora[ref.key] = Object.assign({}, e, {ts: Date.now()});
+  ref.set(e).catch(() => {
+    delete S.bitacora[ref.key];
+    if(!avisoBitacora){ avisoBitacora = true; toast('El cambio se guardó, pero no quedó en la bitácora: falta publicar las reglas nuevas de Firebase.', 'warn'); }
+  });
+}
+const listaBitacora = () => Object.entries(S.bitacora||{}).map(([id,e]) => Object.assign({id}, e)).sort((a,b) => (b.ts||0) - (a.ts||0));
+const ultimoCambio = clave => listaBitacora().find(e => e.clave === clave) || null;
+const ultimoCambioArea = area => listaBitacora().find(e => e.area === area) || null;
+const horaDeTs = ts => { const d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
+const cuandoTs = ts => (fechaLocal(new Date(ts)) === S.hoy ? 'hoy' : fechaCorta(fechaLocal(new Date(ts)))) + ' a las ' + horaDeTs(ts);
+const quienCuando = e => e ? (e.porUid === S.user.uid ? 'tu cuenta' : e.porNombre) + ', ' + cuandoTs(e.ts) : '';
+function lineaUltimo(area){
+  const e = ultimoCambioArea(area);
+  return e ? `<div class="ult-cambio">🕘 Último cambio: <b>${escH(e.porNombre)}</b> · ${escH(cuandoTs(e.ts))} — ${escH(e.accion)}</div>` : '';
+}
+/* Mensaje cuando alguien intenta algo que ya está hecho. */
+function yaHecho(clave, texto){
+  const e = ultimoCambio(clave);
+  toast('ℹ️ ' + texto + (e ? ': lo hizo ' + quienCuando(e) + '.' : '.'), 'warn');
+}
+/* Si otra persona cambia algo mientras alguien tiene Ajustes abierto, se avisa. */
+function avisoCambioAjeno(){
+  if(vistaActual() !== 'ajustes' || !S.ajTs || !S.user) return;
+  const nuevos = listaBitacora().filter(e => (e.ts||0) > S.ajTs && e.porUid !== S.user.uid);
+  const div = $('ajAviso'); if(!div) return;
+  if(!nuevos.length){ div.classList.add('oculto'); return; }
+  div.classList.remove('oculto');
+  div.innerHTML = `🔔 Mientras estabas aquí, ${nuevos.slice(0,3).map(e => `<b>${escH(e.porNombre)}</b> ${escH(e.accion)}`).join('; ')}${nuevos.length > 3 ? ' y ' + (nuevos.length-3) + ' cambio(s) más' : ''}. <button class="btn btn-sm" id="ajRecargar">🔄 Ver lo actualizado</button>`;
+  $('ajRecargar').onclick = () => renderAjustes();
+}
+function renderBitacora(){
+  const cont = $('bitLista'); if(!cont) return;
+  const per = $('bitPersona').value, area = $('bitArea').value;
+  const l = listaBitacora().filter(e => (!per || e.porNombre === per) && (!area || e.area === area)).slice(0, 200);
+  cont.innerHTML = l.length ? l.map(e => `<div class="bit-it"><div class="t">${escH(fechaCorta(fechaLocal(new Date(e.ts))))}<br>${escH(horaDeTs(e.ts))}</div><div><b>${escH(e.porNombre)}</b> · <span class="a">${escH(e.area)}</span><br>${escH(e.accion)}</div></div>`).join('') : '<div class="vacio">Sin cambios registrados.</div>';
+}
+
+/* Campos de "Guardar ajustes": se compara lo escrito contra lo guardado y contra lo que había al abrir la pantalla. */
+const igual = (a,b) => JSON.stringify(a) === JSON.stringify(b);
+const NOM_DIA = ['','L','M','Mi','J','V'];
+function diasEFActual(k, g){
+  const ef = (S.config.edFisica||{})[k];
+  const v = ef ? (Array.isArray(ef) ? ef : Object.values(ef)) : (diasEdFisicaHorario(claveGrupo(g)) || []);
+  return v.map(Number).filter(d => d >= 1 && d <= 5).sort();
+}
+function camposAjustes(){
+  const c = [];
+  ['Matutino','Mixto'].forEach(t => ['entrada','salida'].forEach(k => c.push({
+    clave:`horarios.${t}.${k}`, path:`horarios/${t}/${k}`, etiqueta:`${k === 'entrada' ? 'Entrada' : 'Salida'} ${t}`,
+    actual: () => (S.config.horarios[t]||{})[k] || '',
+    form: () => { const i = document.querySelector(`[data-h="${t}|${k}"]`); return i ? i.value : null; },
+    txt: v => v || '(vacío)'
+  })));
+  c.push({clave:'alertasModulo', path:'alertasModulo', etiqueta:'Alertas de cambio de módulo', actual: () => S.config.alertasModulo || 'siempre', form: () => $('ajAlertas') ? $('ajAlertas').value : null, txt: v => ({siempre:'todos los días', alterno:'solo horario alterno', nunca:'apagadas'})[v] || v});
+  c.push({clave:'tolerancia', path:'tolerancia', etiqueta:'Tolerancia', actual: () => Number(S.config.tolerancia||0), form: () => $('ajTol') ? Math.max(0, Math.min(60, Number($('ajTol').value)||0)) : null, txt: v => v + ' min'});
+  c.push({clave:'reincidencia.n', path:'reincidencia/n', etiqueta:'Reincidencia: número de reportes', actual: () => Number(S.config.reincidencia.n), form: () => $('ajRn') ? Math.max(2, Number($('ajRn').value)||3) : null, txt: v => String(v)});
+  c.push({clave:'reincidencia.dias', path:'reincidencia/dias', etiqueta:'Reincidencia: periodo', actual: () => Number(S.config.reincidencia.dias), form: () => $('ajRd') ? Math.max(7, Number($('ajRd').value)||30) : null, txt: v => v + ' días'});
+  c.push({clave:'responsable', path:'responsable', etiqueta:'Nombre para firmar', actual: () => S.config.responsable || '', form: () => $('ajResp') ? $('ajResp').value.trim().slice(0,120) : null, txt: v => v || '(vacío)'});
+  c.push({clave:'pruebas', path:'pruebas', etiqueta:'Matrículas de prueba', actual: () => Object.keys(S.config.pruebas||{}).sort(),
+    form: () => $('ajPruebas') ? [...new Set($('ajPruebas').value.split(/[,\s]+/).map(x => x.trim()).filter(x => /^[A-Za-z0-9]+$/.test(x)))].sort() : null,
+    escribir: v => { const o = {}; v.forEach(x => o[x] = true); return o; }, txt: v => v.join(', ') || '(ninguna)'});
+  gruposExistentes().forEach(g => { const k = String(g.grado) + String(g.grupo); c.push({
+    clave:'edFisica.' + k, path:'edFisica/' + k, etiqueta:`Ed. Física ${g.grado}°${g.grupo}`,
+    actual: () => diasEFActual(k, g),
+    form: () => { const l = [...document.querySelectorAll('[data-ef]')].filter(i => i.dataset.ef.split('|')[0] === k); return l.length ? l.filter(i => i.checked).map(i => Number(i.dataset.ef.split('|')[1])).sort() : null; },
+    escribir: v => v.length ? v : [0], txt: v => v.map(d => NOM_DIA[d]).join(', ') || 'ningún día'
+  }); });
+  return c;
+}
+function fotoAjustes(){
+  const b = {}; camposAjustes().forEach(f => b[f.clave] = f.actual());
+  b.__esquemas = JSON.parse(JSON.stringify(S.config.esquemas || {}));
+  return b;
+}
+
 $('ajContenido').addEventListener('click', e => { if(esAdmin()) manejarAjustes(e); });
 $('ajContenido').addEventListener('change', e => {
   const s = e.target.closest('select[data-turno-u]'); if(!s || !esAdmin()) return;
-  const u = S.usuariosPref[s.dataset.turnoU];
-  db.ref(`${ROOT}/usuarios/${s.dataset.turnoU}/turno`).set(s.value)
-    .then(() => toast('Turno de ' + (u ? (u.nombre||u.usuario) : '') + ': ' + (s.value === 'Ambos' ? 'ambos turnos' : s.value)))
+  const u = S.usuariosPref[s.dataset.turnoU], uid = s.dataset.turnoU;
+  if(u && (u.turno || 'Ambos') === s.value){ yaHecho('usuario.' + uid + '.turno', 'Ese turno ya estaba asignado'); return; }
+  const antes = u ? (u.turno || 'Ambos') : '';
+  db.ref(`${ROOT}/usuarios/${uid}/turno`).set(s.value)
+    .then(() => { toast('Turno de ' + (u ? (u.nombre||u.usuario) : '') + ': ' + (s.value === 'Ambos' ? 'ambos turnos' : s.value)); registrarCambio('Prefectas', 'usuario.' + uid + '.turno', 'Cambió el turno de ' + (u ? (u.nombre||u.usuario) : '') + ': ' + antes + ' → ' + s.value); })
     .catch(err => toast(errorFirebase(err),'err'));
 });
 function manejarAjustes(e){
@@ -2107,32 +2423,50 @@ function manejarAjustes(e){
     $('nuPass').focus(); return;
   }
   const b = e.target.closest('button[data-op]'); if(!b) return;
+  const want = b.dataset.want;
   if(b.dataset.op === 'susQuitar'){
-    db.ref(`${ROOT}/config/suspensiones/${b.dataset.f}`).remove().then(() => toast('Día quitado')).catch(err => toast(errorFirebase(err),'err'));
+    const f = b.dataset.f, m = (S.config.suspensiones||{})[f];
+    if(!m){ yaHecho('suspension.' + f, 'Ese día ya se había quitado'); renderAjustes(); return; }
+    db.ref(`${ROOT}/config/suspensiones/${f}`).remove().then(() => { toast('Día quitado'); registrarCambio('Días sin clases', 'suspension.' + f, 'Quitó el día sin clases del ' + fechaLarga(f) + ' (' + m + ')'); }).catch(err => toast(errorFirebase(err),'err'));
     return;
   }
   if(b.dataset.op === 'calQuitar'){
-    db.ref(`${ROOT}/config/calendario/${b.dataset.f}`).remove().then(() => toast('Fecha quitada')).catch(err => toast(errorFirebase(err),'err'));
+    const f = b.dataset.f, id = (S.config.calendario||{})[f];
+    if(!id){ yaHecho('calendario.' + f, 'Esa fecha ya se había quitado'); renderAjustes(); return; }
+    db.ref(`${ROOT}/config/calendario/${f}`).remove().then(() => { toast('Fecha quitada'); registrarCambio('Horarios alternos', 'calendario.' + f, 'Quitó el horario alterno del ' + fechaLarga(f)); }).catch(err => toast(errorFirebase(err),'err'));
     return;
   }
   if(b.dataset.op === 'xvis'){
     const t = S.tiposExtra[b.dataset.x]; if(!t) return;
-    db.ref(`${ROOT}/tiposExtra/${b.dataset.x}/activo`).set(t.activo === false).catch(err => toast(errorFirebase(err),'err'));
+    const quiere = want === '1';
+    if((t.activo !== false) === quiere){ yaHecho('tipo.x_' + b.dataset.x, '"' + t.label + '" ya estaba ' + (quiere ? 'visible' : 'oculto')); renderAjustes(); return; }
+    db.ref(`${ROOT}/tiposExtra/${b.dataset.x}/activo`).set(quiere).then(() => registrarCambio('Tipos de reporte', 'tipo.x_' + b.dataset.x, (quiere ? 'Mostró' : 'Ocultó') + ' el tipo de reporte "' + t.label + '"')).catch(err => toast(errorFirebase(err),'err'));
     return;
   }
   if(b.dataset.t !== undefined && b.dataset.op === 'vis'){
-    const tipos = (S.config.tipos||[]).slice(); const t = tipos[Number(b.dataset.t)]; if(!t) return;
-    t.activo = t.activo === false;
-    db.ref(ROOT+'/config/tipos').set(tipos).catch(err => toast(errorFirebase(err),'err'));
+    const tipos = (S.config.tipos||[]).map(x => Object.assign({}, x)); const t = tipos[Number(b.dataset.t)]; if(!t) return;
+    const quiere = want === '1';
+    if((t.activo !== false) === quiere){ yaHecho('tipo.' + t.id, '"' + t.label + '" ya estaba ' + (quiere ? 'visible' : 'oculto')); renderAjustes(); return; }
+    t.activo = quiere;
+    db.ref(ROOT+'/config/tipos').set(tipos).then(() => registrarCambio('Tipos de reporte', 'tipo.' + t.id, (quiere ? 'Mostró' : 'Ocultó') + ' el tipo de reporte "' + t.label + '"')).catch(err => toast(errorFirebase(err),'err'));
     return;
   }
   const uid = b.dataset.u; if(!uid) return;
-  const u = S.usuariosPref[uid]; if(!u) return;
+  const u = S.usuariosPref[uid];
+  const nom = u ? (u.nombre||u.usuario) : '';
+  if(!u){ yaHecho('usuario.' + uid + '.acceso', 'A esa persona ya se le había quitado el acceso'); renderAjustes(); return; }
   if(uid === S.user.uid && b.dataset.op !== 'rol'){ toast('No puedes desactivar tu propia cuenta','warn'); return; }
-  if(b.dataset.op === 'activo') db.ref(`${ROOT}/usuarios/${uid}/activo`).set(!u.activo).catch(err => toast(errorFirebase(err),'err'));
-  if(b.dataset.op === 'rol') db.ref(`${ROOT}/usuarios/${uid}/rol`).set(u.rol === 'admin' ? 'prefecta' : 'admin').catch(err => toast(errorFirebase(err),'err'));
-  if(b.dataset.op === 'quitar' && confirm('¿Quitar el acceso a Prefectura de ' + (u.nombre||u.usuario) + '? Su historial de registros se conserva.'))
-    db.ref(`${ROOT}/usuarios/${uid}`).remove().then(() => toast('Acceso quitado')).catch(err => toast(errorFirebase(err),'err'));
+  if(b.dataset.op === 'activo'){
+    const quiere = want === '1';
+    if(!!u.activo === quiere){ yaHecho('usuario.' + uid + '.activo', nom + ' ya estaba ' + (quiere ? 'activa' : 'desactivada')); renderAjustes(); return; }
+    db.ref(`${ROOT}/usuarios/${uid}/activo`).set(quiere).then(() => registrarCambio('Prefectas', 'usuario.' + uid + '.activo', (quiere ? 'Activó' : 'Desactivó') + ' a ' + nom)).catch(err => toast(errorFirebase(err),'err'));
+  }
+  if(b.dataset.op === 'rol'){
+    if((u.rol || 'prefecta') === want){ yaHecho('usuario.' + uid + '.rol', nom + ' ya era ' + (want === 'admin' ? 'administrador(a)' : 'prefecta/o')); renderAjustes(); return; }
+    db.ref(`${ROOT}/usuarios/${uid}/rol`).set(want).then(() => registrarCambio('Prefectas', 'usuario.' + uid + '.rol', (want === 'admin' ? 'Hizo administrador(a) a ' : 'Quitó lo de administrador(a) a ') + nom)).catch(err => toast(errorFirebase(err),'err'));
+  }
+  if(b.dataset.op === 'quitar' && confirm('¿Quitar el acceso a Prefectura de ' + nom + '? Su historial de registros se conserva.'))
+    db.ref(`${ROOT}/usuarios/${uid}`).remove().then(() => { toast('Acceso quitado'); registrarCambio('Prefectas', 'usuario.' + uid + '.acceso', 'Quitó el acceso a Prefectura de ' + nom); }).catch(err => toast(errorFirebase(err),'err'));
 }
 
 async function crearPrefecta(){
@@ -2140,6 +2474,8 @@ async function crearPrefecta(){
   if(!usuario || !nombre || pass.length < 6){ toast('Escribe usuario, nombre y una contraseña de al menos 6 caracteres','warn'); return; }
   const correo = usuarioACorreo(usuario);
   if(correo === AUTH_SUFIJO){ toast('Usuario no válido: usa letras, números, punto o guion','warn'); return; }
+  const yaExiste = Object.entries(S.usuariosPref||{}).find(([,x]) => usuarioACorreo(x.usuario||'') === correo);
+  if(yaExiste){ const [uidX, x] = yaExiste; const e = ultimoCambio('usuario.' + uidX + '.acceso'); toast('ℹ️ ' + (x.nombre||x.usuario) + ' ya tiene acceso' + (e ? ': la dio de alta ' + quienCuando(e) : (x.creadoPor ? ': la dio de alta ' + x.creadoPor : '')) + '.', 'warn'); return; }
   $('nuCrear').disabled = true;
   try{
     let cred;
@@ -2148,7 +2484,8 @@ async function crearPrefecta(){
       if(e.code !== 'auth/email-already-in-use') throw e;
       cred = await auth2.signInWithEmailAndPassword(correo, pass);   // cuenta existente (p. ej. de Credenciales)
     }
-    await db.ref(`${ROOT}/usuarios/${cred.user.uid}`).set({usuario, nombre, rol, turno, activo:true, creadoPor:S.user.usuario, ts:SV});
+    await db.ref(`${ROOT}/usuarios/${cred.user.uid}`).set({usuario, nombre, rol, turno, activo:true, creadoPor:S.user.nombre, ts:SV});
+    registrarCambio('Prefectas', 'usuario.' + cred.user.uid + '.acceso', `Dio de alta a ${nombre} (usuario ${usuario}, ${rol === 'admin' ? 'administrador(a)' : 'prefecta/o'}, turno ${turno})`);
     await auth2.signOut();
     ['nuUsuario','nuNombre','nuPass'].forEach(id => $(id).value = '');
     toast('Acceso a Prefectura creado para ' + nombre);
