@@ -1,7 +1,7 @@
 // Service worker de Prefectura Escolar.
 // Guarda una copia de la app (no de los datos) para que abra rápido aunque el
 // internet de la escuela esté lento. Los datos siempre vienen de Firebase.
-const CACHE = 'prefectura21-v2-5';
+const CACHE = 'prefectura21-v2-6';
 const ARCHIVOS = ['./', './index.html', './escudo.png', './icon-192.png', './icon-512.png', './manifest.webmanifest'];
 
 self.addEventListener('install', e => {

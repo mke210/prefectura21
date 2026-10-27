@@ -237,6 +237,7 @@ textarea.campo{min-height:80px;resize:vertical}
     </select>
     <button class="btn-salir" id="btnSalir">Salir</button>
   </header>
+  <div class="offline oculto" id="barraPermiso" style="background:#991b1b"></div>
   <div class="offline oculto" id="barraOffline">Sin conexión: los registros se guardan en este dispositivo y se envían al volver el internet.</div>
   <nav class="pestanas" id="pestanas">
     <button data-vista="escanear" class="activa">📷 Escanear</button>
@@ -541,6 +542,7 @@ function salir(msg){
   S.refs.forEach(r => r.off()); S.refs = [];
   auth.signOut().catch(()=>{});
   // Borra de la pantalla todo lo de la sesión anterior (nada queda visible para el siguiente usuario).
+  S.negados = {}; $('barraPermiso').classList.add('oculto');
   S.user = null; S.actual = null; S.recientes = []; S.usuariosPref = {}; S.tiposExtra = {}; S.horarios = HORARIO_OFICIAL;
   S.entradas = {}; S.salidas = {}; S.anticipadas = {}; S.faltas = {}; S.incid = {}; S.anticipadasAll = {}; S.faltasAll = {};
   $('capas').innerHTML = ''; $('ajContenido').innerHTML = ''; $('dbContenido').innerHTML = '';
@@ -579,10 +581,33 @@ auth.onAuthStateChanged(async user => {
 /* =====================================================================
    ARRANQUE Y DATOS EN VIVO
 ===================================================================== */
-function escuchar(ref, evento, fn){
+const NOMBRES_DATO = {alumnos:'la lista de alumnos (Credenciales)', config:'la configuración', incidencias:'los reportes', anticipadas:'las salidas anticipadas', faltas:'las faltas', tiposExtra:'los tipos de reporte', horarios:'los horarios', usuarios:'las prefectas', entradas:'las entradas', salidas:'las salidas'};
+function rutaDe(ref){
+  try{
+    const full = String(ref.toString()), raiz = ref.root ? String(ref.root.toString()).replace(/\/$/,'') : '';
+    const r = raiz && full.startsWith(raiz) ? full.slice(raiz.length) : full.replace(/^[a-z]+:\/\/[^/]+/i,'');
+    return decodeURIComponent(r.replace(/^\//,''));
+  }catch(e){ return ''; }
+}
+function permisoNegado(ref){
+  const ruta = rutaDe(ref);
+  const partes = ruta.split('/');
+  const clave = partes[0] === ROOT ? partes[1] : partes[0];
+  const txt = NOMBRES_DATO[clave] || ruta;
+  S.negados = S.negados || {};
+  if(S.negados[ruta]) return;
+  S.negados[ruta] = true;
+  const b = $('barraPermiso');
+  b.classList.remove('oculto');
+  b.innerHTML = '⛔ Firebase no permite a esta cuenta leer: <b>' + Object.keys(S.negados).map(r => escH(NOMBRES_DATO[(r.split('/')[0] === ROOT ? r.split('/')[1] : r.split('/')[0])] || r)).join(', ') + '</b>. Revisa que estén publicadas las reglas nuevas (<code>database.rules.json</code>) en Firebase → Realtime Database → Reglas.';
+  console.warn('Permiso negado al leer', ruta);
+}
+function escuchar(ref, evento, fn, esPerfil){
   ref.on(evento, fn, err => {
     console.warn('Lectura cancelada', ref.toString(), err);
-    if(String(err.code||err).toLowerCase().includes('permission')) salir('Tu sesión ya no tiene permiso. Vuelve a entrar.');
+    if(!String(err.code||err).toLowerCase().includes('permission')) return;
+    if(esPerfil) salir('Tu acceso a Prefectura fue retirado o las reglas de Firebase no lo permiten. Vuelve a entrar.');
+    else permisoNegado(ref);
   });
   S.refs.push(ref);
 }
@@ -609,7 +634,7 @@ function iniciarApp(){
       const p = s.val();
       if(!p || p.activo !== true) salir('Tu acceso a Prefectura fue desactivado.');
       else if(S.user){ S.user.esAdmin = p.rol === 'admin'; S.user.turnoDefecto = p.turno || 'Ambos'; pintarTurno(); }
-    });
+    }, true);
   }
 
   // Alumnos (solo lectura, del Sistema de Credenciales)
@@ -690,8 +715,8 @@ function suscribirDia(){
   S.faltas = S.faltasAll[S.hoy] || {};
   $('fechaHoy').textContent = fechaLarga(S.hoy);
   const re = db.ref(ROOT+'/entradas/'+S.hoy), rs = db.ref(ROOT+'/salidas/'+S.hoy);
-  re.on('value', s => { S.entradas = s.val() || {}; refrescarTodo(); });
-  rs.on('value', s => { S.salidas = s.val() || {}; refrescarTodo(); });
+  re.on('value', s => { S.entradas = s.val() || {}; refrescarTodo(); }, () => permisoNegado(re));
+  rs.on('value', s => { S.salidas = s.val() || {}; refrescarTodo(); }, () => permisoNegado(rs));
   refsDia = [re, rs]; S.refs.push(re, rs);
 }
 
