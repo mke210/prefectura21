@@ -87,7 +87,10 @@ main{flex:1;width:100%;max-width:1200px;margin:0 auto;padding:14px 14px 70px}
 /* ---------- Escanear ---------- */
 .esc-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
 @media(min-width:900px){.esc-grid{grid-template-columns:minmax(0,1.05fr) minmax(0,1fr)}}
-.modos{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}
+.modos{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:10px}
+@media(min-width:600px){.modos{grid-template-columns:repeat(4,1fr)}}
+.modos button[data-modo="consulta"].activo{background:#5b21b6;border-color:#5b21b6}
+.banner-esq{background:#fef3c7;border:1px solid #fcd34d;color:#92400e;border-radius:10px;padding:8px 12px;font-size:13px;font-weight:700;margin-bottom:10px}
 .modos button{border:2px solid var(--borde);background:#fff;border-radius:12px;padding:12px 6px;font-weight:800;color:var(--marino);font-size:14px;line-height:1.2}
 .modos button small{display:block;font-weight:600;font-size:11px;color:var(--texto-3);margin-top:2px}
 .modos button.activo{background:var(--marino);border-color:var(--marino);color:#fff}
@@ -247,10 +250,12 @@ textarea.campo{min-height:80px;resize:vertical}
     <section class="vista activa" id="v-escanear">
       <div class="esc-grid">
         <div>
+          <div class="banner-esq oculto" id="bannerEsquema"></div>
           <div class="modos" id="modos">
             <button data-modo="entrada" class="activo">✅ Entrada<small>Al formar</small></button>
             <button data-modo="salida">🏁 Salida<small>Fin de turno</small></button>
             <button data-modo="anticipada">🤒 Salida anticipada<small>Se sintió mal, etc.</small></button>
+            <button data-modo="consulta">🔎 ¿Dónde debe estar?<small>Pasillos · solo consulta</small></button>
           </div>
           <div class="camara" id="camara">
             <video id="video" playsinline muted></video>
@@ -386,8 +391,22 @@ const TIPOS_DEFECTO = [
   {id:'tinte',          emoji:'🎨', label:'Cabello pintado', activo:true},
   {id:'maquillaje',     emoji:'💄', label:'Maquillaje', activo:true},
   {id:'accesorios',     emoji:'💍', label:'Accesorios no permitidos', activo:true},
-  {id:'credencial',     emoji:'🪪', label:'No trajo credencial', activo:true}
+  {id:'credencial',     emoji:'🪪', label:'No trajo credencial', activo:true},
+  {id:'salida_antes',   emoji:'🚪', label:'Intentó salir antes de su hora', activo:true},
+  {id:'fuera_salon',    emoji:'🚶', label:'Fuera del salón en horario de clase', activo:true}
 ];
+/* Horas del horario normal (las del archivo de horarios por grupo) */
+const PERIODOS_NORMALES = {
+  Matutino: ['07:00-07:50','07:50-08:40','08:40-09:30','09:30-10:20','10:50-11:40','11:40-12:30','12:30-13:20'],
+  Mixto:    ['08:40-09:30','09:30-10:20','10:50-11:40','11:40-12:30','12:30-13:20','13:20-14:10','14:10-15:00']
+};
+const RECESO = {ini:'10:20', fin:'10:50'};
+/* Horario alterno de la circular: módulos de 40 minutos (matutino 7 módulos, mixto 5). */
+const ESQUEMA_RECORTE40 = {
+  nombre: 'Recorte a módulos de 40 min',
+  Matutino: ['07:00-07:40','07:40-08:20','08:20-09:00','09:00-09:40','09:40-10:20','10:50-11:30','11:30-12:10'],
+  Mixto:    ['08:20-09:00','09:00-09:40','09:40-10:20','10:50-11:30','11:30-12:10']
+};
 const MOTIVOS_SALIDA = ['Se sintió mal','Cita médica','Asunto familiar','Lo recogieron sus padres','Otro'];
 const MOTIVOS_FALTA = ['Enfermedad','Cita médica','Asunto familiar','Otro'];
 const CONFIG_DEFECTO = {
@@ -397,8 +416,12 @@ const CONFIG_DEFECTO = {
   edFisica: {},
   reincidencia: { n:3, dias:30 },
   pruebas: { '2024065': true },
-  responsable: ''
+  responsable: '',
+  esquemas: { recorte40: ESQUEMA_RECORTE40 },
+  calendario: {},
+  suspensiones: {}
 };
+const MOTIVOS_SUSPENSION = ['Consejo Técnico Escolar','Día festivo','Suspensión oficial','Vacaciones','Otro'];
 
 /* ---------------- Estado ---------------- */
 const S = {
@@ -616,6 +639,11 @@ function iniciarApp(){
     if(!Array.isArray(S.config.tipos)) S.config.tipos = Object.values(S.config.tipos||{});
     S.config.horarios = Object.assign({}, CONFIG_DEFECTO.horarios, S.config.horarios||{});
     S.config.reincidencia = Object.assign({}, CONFIG_DEFECTO.reincidencia, S.config.reincidencia||{});
+    S.config.esquemas = Object.assign({}, CONFIG_DEFECTO.esquemas, S.config.esquemas||{});
+    S.config.calendario = S.config.calendario || {};
+    S.config.suspensiones = S.config.suspensiones || {};
+    TIPOS_DEFECTO.forEach(t => { if(!S.config.tipos.some(x => x && x.id === t.id)) S.config.tipos.push(Object.assign({}, t)); });
+    S.config.tipos = S.config.tipos.filter(Boolean);
     refrescarTodo();
   });
 
@@ -852,6 +880,33 @@ function registroBase(a){
   };
 }
 
+/* Turno del alumno: el de Credenciales; si viene vacío o escrito distinto, el de su grupo en el horario. */
+function turnoDe(a){
+  const t = norm(a.turno);
+  if(/matut|manana/.test(t)) return 'Matutino';
+  if(/mixt|vesp|tarde/.test(t)) return 'Mixto';
+  const h = S.horarios && S.horarios[claveGrupo(a)];
+  return h && h.turno ? h.turno : (a.turno || '');
+}
+const parseMod = x => { const m = String(x||'').match(/(\d{1,2})[:.](\d{2})\s*(?:-|–|a)\s*(\d{1,2})[:.](\d{2})/); return m ? {ini: m[1].padStart(2,'0')+':'+m[2], fin: m[3].padStart(2,'0')+':'+m[4]} : null; };
+const listaMods = arr => (Array.isArray(arr) ? arr : Object.values(arr||{})).map(parseMod).filter(Boolean);
+const suspensionDe = fecha => (S.config.suspensiones||{})[fecha] || null;
+function esquemaDe(fecha){
+  const id = (S.config.calendario||{})[fecha];
+  const e = id && (S.config.esquemas||{})[id];
+  return e ? Object.assign({id}, e) : null;
+}
+/* Horario de un turno en una fecha: módulos, entrada y salida (normal o alterno). */
+function horarioTurno(turno, fecha){
+  const esq = esquemaDe(fecha || S.hoy);
+  const normal = S.config.horarios[turno] || {};
+  if(esq && esq[turno]){
+    const mods = listaMods(esq[turno]);
+    if(mods.length) return {esquema: esq, modulos: mods, entrada: normal.entrada ? mods[0].ini : '', salida: mods[mods.length-1].fin};
+  }
+  return {esquema: null, modulos: listaMods(PERIODOS_NORMALES[turno]), entrada: normal.entrada || '', salida: normal.salida || ''};
+}
+
 function agregarReciente(mat, modo, estado, texto){
   S.recientes.unshift({mat, modo, estado, texto, hora: horaLocal()});
   S.recientes = S.recientes.slice(0, 40);
@@ -875,7 +930,7 @@ function procesar(mat, metodo){
     }
     const reg = registroBase(a);
     reg.metodo = metodo;
-    const hEnt = aMin((S.config.horarios[a.turno]||{}).entrada);
+    const hEnt = aMin(horarioTurno(turnoDe(a), S.hoy).entrada);
     reg.retardo = hEnt !== null && aMin(reg.hora) > hEnt + Number(S.config.tolerancia||0);
     S.entradas[mat] = Object.assign({}, reg, {ts: Date.now()});   // se ve al instante, aun sin internet
     db.ref(`${ROOT}/entradas/${S.hoy}/${mat}`).set(reg).catch(err => {
@@ -890,15 +945,25 @@ function procesar(mat, metodo){
     return;
   }
 
+  if(S.modo === 'consulta'){
+    const cl = textoClaseActual(a) || 'Sin horario de clases';
+    avisar('info', nombre, meta + '<br>' + cl);
+    sonido('ok');
+    agregarReciente(mat, 'consulta', 'info', 'Consulta');
+    renderTarjeta();
+    return;
+  }
+
   if(S.modo === 'salida'){
     const ya = S.salidas[mat];
     if(ya && !esPrueba(mat)){
       avisar('warn', nombre, 'Ya registró salida a las ' + escH(ya.hora));
       sonido('warn'); agregarReciente(mat, 'salida', 'warn', 'Repetido'); renderTarjeta(); return;
     }
-    const hSal = aMin((S.config.horarios[a.turno]||{}).salida);
+    const ht = horarioTurno(turnoDe(a), S.hoy);
+    const hSal = aMin(ht.salida);
     if(hSal !== null && aMin(horaLocal()) < hSal - 20){
-      avisar('warn', nombre, 'Todavía no es hora de salida (' + escH(S.config.horarios[a.turno].salida) + ')');
+      avisar('warn', nombre, 'Todavía no es hora de salida: turno ' + escH(turnoDe(a)) + ', sale a las ' + escH(ht.salida) + (ht.esquema ? ' (horario alterno)' : ''));
       sonido('warn');
       S.actual.salidaTemprana = true;
       renderTarjeta(); return;
@@ -936,7 +1001,16 @@ function guardarSalida(mat){
 function alumnosLista(turno){
   return Object.values(S.alumnos).filter(a => !turno || a.turno === turno);
 }
+function renderBannerEsquema(){
+  const e = esquemaDe(S.hoy), b = $('bannerEsquema'), su = suspensionDe(S.hoy);
+  if(su){ b.classList.remove('oculto'); b.style.cssText = 'background:#fee2e2;border-color:#fca5a5;color:#991b1b'; b.innerHTML = '🚫 Hoy no hay clases: ' + escH(su); return; }
+  b.style.cssText = '';
+  if(!e){ b.classList.add('oculto'); return; }
+  b.classList.remove('oculto');
+  b.innerHTML = `📅 Hoy: ${escH(e.nombre||'Horario alterno')} · Salida ${['Matutino','Mixto'].map(t => { const h = horarioTurno(t, S.hoy); return escH(t) + ' ' + escH(h.salida) + ' (' + h.modulos.length + ' módulos)'; }).join(' · ')}`;
+}
 function renderContadores(){
+  renderBannerEsquema();
   const tt = filtroTurno();
   const enT = m => S.alumnos[m] && (!tt || S.alumnos[m].turno === tt);
   const todos = alumnosLista(tt);
@@ -1013,6 +1087,7 @@ function renderTarjeta(){
       <div class="acciones">
         <button class="btn btn-sm" data-acc="salidaNormal">Registrar salida de todos modos</button>
         <button class="btn btn-sm" style="background:#9a3412" data-acc="anticipada">Es salida anticipada</button>
+        <button class="btn btn-sm btn-rojo" data-acc="reporteSalida">🚪 No tiene permiso: levantar reporte</button>
       </div>
     </div>` : '';
   t.innerHTML = `
@@ -1048,6 +1123,15 @@ $('tarjetaAlumno').addEventListener('click', e => {
   if(acc === 'salidaNormal') guardarSalida(mat);
   if(acc === 'nota') abrirReporteNota(mat);
   if(acc === 'nuevaSituacion') abrirNuevaSituacion(mat);
+  if(acc === 'reporteSalida'){
+    const a = S.alumnos[mat], ht = horarioTurno(turnoDe(a), S.hoy);
+    const t = tipoPorId('salida_antes') || {id:'salida_antes', emoji:'🚪', label:'Intentó salir antes de su hora'};
+    if(!incidenciasDe(mat, S.hoy).some(r => r.tipo === 'salida_antes'))
+      guardarIncidencia(mat, t, 'Intentó salir a las ' + horaLocal() + '; su turno (' + turnoDe(a) + ') sale a las ' + ht.salida + (ht.esquema ? ' (horario alterno)' : '') + '.');
+    S.actual.salidaTemprana = false;
+    avisar('err', escH(a.nombre), 'Reporte: intentó salir antes de su hora. Regresa a clase.');
+    renderTarjeta();
+  }
   if(acc === 'entradaManual'){ const m = S.modo; S.modo = 'entrada'; procesar(mat, 'manual'); S.modo = m; }
 });
 
@@ -1286,40 +1370,79 @@ function bloquesDelDia(clave, dia){
   return (Array.isArray(b) ? b : Object.values(b||{})).filter(x => x && x.ini && x.fin).sort((x,y) => aMin(x.ini) - aMin(y.ini));
 }
 const minutosAhora = d => d.getHours()*60 + d.getMinutes();
+const fechaDeDia = dia => { const hoy = new Date(); return sumarDias(fechaLocal(hoy), dia - hoy.getDay()); };
+/* Clases de un grupo en un día, ya con los horarios del día (normal o alterno) y su número de módulo. */
+function bloquesVista(clave, dia, fecha){
+  const h = S.horarios[clave]; if(!h) return null;
+  const bl = bloquesDelDia(clave, dia) || [];
+  const per = listaMods(PERIODOS_NORMALES[h.turno]);
+  const esq = esquemaDe(fecha || fechaDeDia(dia));
+  const mods = esq && esq[h.turno] ? listaMods(esq[h.turno]) : null;
+  if(!mods || !mods.length){
+    return bl.map(b => {
+      const n = per.findIndex(p => p.ini === b.ini.padStart(5,'0')) + 1, n2 = per.findIndex(p => p.fin === b.fin.padStart(5,'0')) + 1;
+      return Object.assign({}, b, {n: n || null, n2: n2 || n || null});
+    });
+  }
+  // Horario alterno: el módulo 1 corresponde a la 1ª hora del horario normal, el 2 a la 2ª, etc.
+  const out = [];
+  mods.forEach((md, i) => {
+    const p = per[i]; if(!p) return;
+    const b = bl.find(x => aMin(x.ini) <= aMin(p.ini) && aMin(p.ini) < aMin(x.fin));
+    if(b) out.push(Object.assign({}, b, {ini: md.ini, fin: md.fin, n: i+1, n2: i+1, alterno: true}));
+  });
+  return out;
+}
+const textoModulo = b => b.n ? (b.n2 && b.n2 !== b.n ? `Módulos ${b.n}–${b.n2}` : `Módulo ${b.n}`) : '';
 function claseActual(a, fecha){
   const d = fecha || new Date();
-  const clave = claveGrupo(a);
-  if(!S.horarios[clave]) return {estado:'sin', clave};
-  const bl = bloquesDelDia(clave, d.getDay()) || [];
-  if(!bl.length) return {estado:'libre', clave};
+  const f = fechaLocal(d), turno = turnoDe(a), clave = claveGrupo(a);
+  const ht = horarioTurno(turno, f);
+  const mods = turno ? ht.modulos : [];
+  const vista = S.horarios[clave] ? bloquesVista(clave, d.getDay(), f) : null;
+  const base = {clave, turno, total: mods.length, esquema: ht.esquema, salida: ht.salida};
+  if(suspensionDe(f)) return Object.assign(base, {estado:'suspension', motivo: suspensionDe(f)});
+  if(d.getDay() === 0 || d.getDay() === 6 || (vista && !vista.length)) return Object.assign(base, {estado:'libre'});
   const m = minutosAhora(d);
-  const ahora = bl.find(x => aMin(x.ini) <= m && m < aMin(x.fin));
-  if(ahora) return {estado:'clase', clave, b:ahora};
-  const sig = bl.find(x => aMin(x.ini) > m);
-  if(m < aMin(bl[0].ini)) return {estado:'antes', clave, b:sig};
-  if(!sig) return {estado:'fuera', clave};
-  return {estado:'entre', clave, b:sig};
+  if(mods.length){
+    const i = mods.findIndex(x => aMin(x.ini) <= m && m < aMin(x.fin));
+    if(i >= 0){
+      const b = vista && vista.find(x => aMin(x.ini) <= m && m < aMin(x.fin));
+      return Object.assign(base, {estado: vista ? (b ? 'clase' : 'hueco') : 'modulo', n: i+1, mod: mods[i], b});
+    }
+    const j = mods.findIndex(x => aMin(x.ini) > m);
+    const sig = j >= 0 ? Object.assign({n: j+1, mod: mods[j], b: vista && vista.find(x => aMin(x.ini) >= aMin(mods[j].ini))}) : null;
+    if(m < aMin(mods[0].ini)) return Object.assign(base, {estado:'antes', sig});
+    if(!sig) return Object.assign(base, {estado:'fuera'});
+    if(m >= aMin(RECESO.ini) && m < aMin(RECESO.fin)) return Object.assign(base, {estado:'receso', sig});
+    return Object.assign(base, {estado:'entre', sig});
+  }
+  if(!vista) return Object.assign(base, {estado:'sin'});
+  const b = vista.find(x => aMin(x.ini) <= m && m < aMin(x.fin));
+  if(b) return Object.assign(base, {estado:'clase', b, n: b.n});
+  return Object.assign(base, {estado: m < aMin(vista[0].ini) ? 'antes' : 'fuera'});
 }
 const detalleClase = b => escH(b.materia) + ' · ' + (esVacante(b) ? '<b style="color:var(--err)">⚠️ sin maestro (vacante)</b>' : escH(b.docente)) + (b.aula ? ' · Aula ' + escH(b.aula) : '');
 function textoClaseActual(a){
-  if(!Object.keys(S.horarios||{}).length) return '';
   const c = claseActual(a);
-  if(c.estado === 'clase') return `📚 Ahora: ${detalleClase(c.b)} <small>(hasta ${escH(c.b.fin)})</small>`;
-  if(c.estado === 'entre'){
-    const m = minutosAhora(new Date());
-    const receso = m >= aMin('10:20') && m < aMin('10:50');
-    return `${receso ? '☕ Receso' : '🕳️ Hora libre (sin clase)'} · después: ${detalleClase(c.b)} a las ${escH(c.b.ini)}`;
-  }
-  if(c.estado === 'antes') return `🕘 Sus clases empiezan a las ${escH(c.b.ini)} (${detalleClase(c.b)})`;
-  if(c.estado === 'fuera') return '🏁 Ya terminaron sus clases de hoy';
-  if(c.estado === 'libre') return '📚 Hoy no tiene clases en su horario';
-  return `📚 No hay horario del grupo ${escH(grupoDe(a))}`;
+  const alt = c.esquema ? ' <small>· horario alterno</small>' : '';
+  const sigTxt = s => s ? `Módulo ${s.n} a las ${escH(s.mod.ini)}${s.b ? ': ' + detalleClase(s.b) : ''}` : '';
+  if(c.estado === 'clase') return `📚 Módulo ${c.n} de ${c.total || '?'} (${escH((c.mod||c.b).ini)}–${escH((c.mod||c.b).fin)}): ${detalleClase(c.b)}${alt}`;
+  if(c.estado === 'hueco') return `🕳️ Módulo ${c.n} (${escH(c.mod.ini)}–${escH(c.mod.fin)}): hora libre, sin clase${alt}`;
+  if(c.estado === 'modulo') return `📚 Módulo ${c.n} de ${c.total} (${escH(c.mod.ini)}–${escH(c.mod.fin)}) · sin horario del grupo ${escH(grupoDe(a))}${alt}`;
+  if(c.estado === 'receso') return `☕ Receso (${RECESO.ini}–${RECESO.fin}) · sigue ${sigTxt(c.sig)}${alt}`;
+  if(c.estado === 'entre') return `🕳️ Entre módulos · sigue ${sigTxt(c.sig)}${alt}`;
+  if(c.estado === 'antes') return c.sig ? `🕘 Sus clases empiezan a las ${escH(c.sig.mod.ini)}${c.sig.b ? ' (' + detalleClase(c.sig.b) + ')' : ''}${alt}` : '🕘 Aún no empiezan sus clases';
+  if(c.estado === 'fuera') return `🏁 Ya terminaron sus clases de hoy${c.salida ? ' (salida ' + escH(c.salida) + ')' : ''}${alt}`;
+  if(c.estado === 'libre') return '📚 Hoy no tiene clases';
+  if(c.estado === 'suspension') return `🚫 Hoy no hay clases (${escH(c.motivo)})`;
+  return '';
 }
 /* Índice de maestros: nombre → [{grupo, dia, bloque}] */
 function indiceMaestros(){
   const idx = {};
   Object.entries(S.horarios||{}).forEach(([g, h]) => {
-    for(let d = 1; d <= 5; d++) (bloquesDelDia(g, d) || []).forEach(b => {
+    for(let d = 1; d <= 5; d++) (bloquesVista(g, d) || []).forEach(b => {
       if(esVacante(b)) return;
       (idx[b.docente] = idx[b.docente] || []).push({g, d, b});
     });
@@ -1330,9 +1453,9 @@ const nomGrupo = k => k.replace(/^(\d+)/, '$1°');
 let diaHorario = null;   // día elegido en las pestañas (null = hoy)
 function tablaBloques(bl, dia, colPrimera, filaPrimera){
   const hoy = new Date(), m = minutosAhora(hoy), esHoy = dia === hoy.getDay();
-  return `<div class="tabla-wrap"><table class="horario-dia"><thead><tr><th>Hora</th><th>${colPrimera}</th><th>${colPrimera === 'Materia' ? 'Maestro(a)' : 'Materia'}</th></tr></thead><tbody>${bl.map(x => {
+  return `<div class="tabla-wrap"><table class="horario-dia"><thead><tr><th>Módulo</th><th>Hora</th><th>${colPrimera}</th><th>${colPrimera === 'Materia' ? 'Maestro(a)' : 'Materia'}</th></tr></thead><tbody>${bl.map(x => {
     const b = x.b || x; const on = esHoy && aMin(b.ini) <= m && m < aMin(b.fin); const c = on ? ' class="ahora"' : '';
-    return `<tr><td${c}>${escH(b.ini)}–${escH(b.fin)}${on?' ◀ ahora':''}</td><td${c}>${filaPrimera(x)}</td><td${c}>${colPrimera === 'Materia' ? (esVacante(b) ? '<b style="color:var(--err)">⚠️ Vacante</b>' : escH(b.docente)) : escH(b.materia)}</td></tr>`; }).join('')}</tbody></table></div>`;
+    return `<tr><td${c}>${escH(textoModulo(b).replace('Módulos ','').replace('Módulo ',''))}</td><td${c}>${escH(b.ini)}–${escH(b.fin)}${on?' ◀ ahora':''}</td><td${c}>${filaPrimera(x)}</td><td${c}>${colPrimera === 'Materia' ? (esVacante(b) ? '<b style="color:var(--err)">⚠️ Vacante</b>' : escH(b.docente)) : escH(b.materia)}</td></tr>`; }).join('')}</tbody></table></div>`;
 }
 function renderHorarioGrupo(){
   const sel = $('selGrupoHorario'), selM = $('selMaestroHorario');
@@ -1345,30 +1468,34 @@ function renderHorarioGrupo(){
   if(selM.dataset.ops !== opsM){ const v = selM.value; selM.innerHTML = opsM; selM.dataset.ops = opsM; selM.value = v; }
   const hoy = new Date();
   const dia = diaHorario || (hoy.getDay() >= 1 && hoy.getDay() <= 5 ? hoy.getDay() : 1);
-  $('diasHorario').innerHTML = [1,2,3,4,5].map(d => `<button class="${d===dia?'activo':''}" data-dia="${d}">${DIAS_NOM[d].slice(0,3)}${d===hoy.getDay()?' · hoy':''}</button>`).join('');
+  $('diasHorario').innerHTML = [1,2,3,4,5].map(d => `<button class="${d===dia?'activo':''}" data-dia="${d}">${DIAS_NOM[d].slice(0,3)}${d===hoy.getDay()?' · hoy':''}${suspensionDe(fechaDeDia(d))?' 🚫':esquemaDe(fechaDeDia(d))?' ✂️':''}</button>`).join('');
+  const susDia = suspensionDe(fechaDeDia(dia));
+  const escDia = esquemaDe(fechaDeDia(dia));
   const cont = $('horarioGrupo');
   if(!claves.length){ cont.innerHTML = '<div class="vacio">No hay horarios de clase cargados.</div>'; return; }
   const k = sel.value, mae = selM.value;
   let html = '';
   if(k){
-    const bl = bloquesDelDia(k, dia) || [];
-    html += `<h3 style="margin:6px 0">${escH(nomGrupo(k))} · ${escH(DIAS_NOM[dia])}</h3>` + (bl.length ? tablaBloques(bl, dia, 'Materia', b => escH(b.materia)) : '<div class="vacio">Sin clases ese día.</div>');
+    const bl = bloquesVista(k, dia) || [];
+    html += `<h3 style="margin:6px 0">${escH(nomGrupo(k))} · ${escH(DIAS_NOM[dia])}${escDia ? ' · <span style="color:#92400e">✂️ ' + escH(escDia.nombre) + '</span>' : ''}</h3>` + (bl.length ? tablaBloques(bl, dia, 'Materia', b => escH(b.materia)) : '<div class="vacio">Sin clases ese día.</div>');
   }
   if(mae){
     const bl = (idx[mae]||[]).filter(x => x.d === dia).sort((x,y) => aMin(x.b.ini) - aMin(y.b.ini));
     let dondeAhora = '';
     if(dia === hoy.getDay()){
       const m = minutosAhora(hoy), ah = bl.find(x => aMin(x.b.ini) <= m && m < aMin(x.b.fin));
-      dondeAhora = `<div class="clase-ahora" style="margin:0 0 8px">${ah ? `👩‍🏫 Ahora está con <b>${escH(nomGrupo(ah.g))}</b> · ${escH(ah.b.materia)} (hasta ${escH(ah.b.fin)})` : '👩‍🏫 En este momento no tiene grupo'}</div>`;
+      dondeAhora = `<div class="clase-ahora" style="margin:0 0 8px">${ah ? `👩‍🏫 Ahora está con <b>${escH(nomGrupo(ah.g))}</b> · ${escH(textoModulo(ah.b))} · ${escH(ah.b.materia)} (hasta ${escH(ah.b.fin)})` : '👩‍🏫 En este momento no tiene grupo'}</div>`;
     }
     html += `<h3 style="margin:12px 0 6px">${escH(mae)} · ${escH(DIAS_NOM[dia])}</h3>` + dondeAhora + (bl.length ? tablaBloques(bl, dia, 'Grupo', x => '<b>' + escH(nomGrupo(x.g)) + '</b>') : '<div class="vacio">Sin clases ese día.</div>');
   }
   // Horas sin maestro del día elegido (los grupos quedan solos: atención de prefectura)
   const vac = [];
-  claves.forEach(g => (bloquesDelDia(g, dia) || []).forEach(b => { if(esVacante(b)) vac.push({g, b}); }));
+  claves.forEach(g => (bloquesVista(g, dia) || []).forEach(b => { if(esVacante(b)) vac.push({g, b}); }));
   vac.sort((x,y) => aMin(x.b.ini) - aMin(y.b.ini) || x.g.localeCompare(y.g));
   if(vac.length) html += `<h3 style="margin:14px 0 6px">⚠️ Horas sin maestro (vacante) · ${escH(DIAS_NOM[dia])}</h3><div class="nota">En estas horas el grupo no tiene maestro asignado.</div>` + tablaBloques(vac, dia, 'Grupo', x => '<b>' + escH(nomGrupo(x.g)) + '</b>');
   if(!k && !mae && !vac.length) html = '<div class="nota">Elige un grupo o un maestro.</div>';
+  if(susDia) html = `<div class="banner-esq" style="background:#fee2e2;border-color:#fca5a5;color:#991b1b">🚫 ${escH(DIAS_NOM[dia])} ${escH(fechaCorta(fechaDeDia(dia)))}: no hay clases (${escH(susDia)}). Abajo se muestra el horario normal solo como referencia.</div>` + html;
+  else if(escDia) html = `<div class="banner-esq">✂️ ${escH(DIAS_NOM[dia])} ${escH(fechaCorta(fechaDeDia(dia)))}: ${escH(escDia.nombre)}. El módulo 1 corresponde a la 1ª hora del horario normal, el 2 a la 2ª, y así sucesivamente.</div>` + html;
   cont.innerHTML = html;
 }
 $('selGrupoHorario').addEventListener('change', renderHorarioGrupo);
@@ -1422,7 +1549,7 @@ async function asistenciaReciente(mat, nDias){
   let f = S.hoy;
   // Hoy solo cuenta si ya entró; si aún no, se toman los días hábiles anteriores.
   if(!S.entradas[mat]) f = sumarDias(f, -1);
-  while(fechas.length < nDias){ const d = new Date(f+'T12:00:00').getDay(); if(d !== 0 && d !== 6) fechas.push(f); f = sumarDias(f, -1); }
+  while(fechas.length < nDias){ const d = new Date(f+'T12:00:00').getDay(); if(d !== 0 && d !== 6 && !suspensionDe(f)) fechas.push(f); f = sumarDias(f, -1); }
   const res = await Promise.all(fechas.map(x => db.ref(`${ROOT}/entradas/${x}/${mat}`).once('value').then(s => s.val()).catch(() => null)));
   return fechas.map((x,i) => ({f:x, ent:res[i]}));
 }
@@ -1655,6 +1782,7 @@ async function renderDashboard(){
   cont.innerHTML = `
     <div class="tarjeta">
       <h2>📅 ${escH(fechaLarga(fecha))} ${turno?'<span class="tag gris">'+escH(turno)+'</span>':''}</h2>
+      ${suspensionDe(fecha) ? `<div class="banner-esq" style="background:#fee2e2;border-color:#fca5a5;color:#991b1b">🚫 Día sin clases: ${escH(suspensionDe(fecha))}. Las faltas de este día no cuentan.</div>` : esquemaDe(fecha) ? `<div class="banner-esq">✂️ ${escH(esquemaDe(fecha).nombre)}</div>` : ''}
       <div class="stats">
         <div class="stat"><b>${c.total}</b><span>Alumnos inscritos</span></div>
         <div class="stat v"><b>${c.llegaron.length}</b><span>Llegaron (${pct}%)</span></div>
@@ -1812,6 +1940,26 @@ function renderAjustes(){
       <div class="fila" style="margin-top:10px"><span>Tolerancia (minutos)</span><input type="number" class="campo" id="ajTol" min="0" max="60" value="${Number(c.tolerancia||0)}" style="max-width:110px" ${dis}></div>
     </div>
     <div class="tarjeta">
+      <h2>🚫 Días sin clases (suspensión)</h2>
+      <div class="nota">Consejo Técnico, días festivos, suspensiones oficiales o vacaciones. Esos días la app avisa que no hay clases, no busca clase ni módulo y no cuenta faltas en la asistencia del alumno.</div>
+      ${adm ? `<div class="fila"><span>Desde</span><input type="date" class="campo" id="susDesde" value="${escH(S.hoy)}" style="max-width:170px"><span>hasta</span><input type="date" class="campo" id="susHasta" style="max-width:170px" title="Opcional: para varios días seguidos"><select class="campo" id="susMotivo" style="max-width:220px">${MOTIVOS_SUSPENSION.map(m => `<option>${escH(m)}</option>`).join('')}</select><input class="campo" id="susOtro" placeholder="Detalle (opcional)" maxlength="60"><button class="btn btn-sm" id="susAgregar">Agregar</button></div>
+      <div class="acciones"><button class="btn btn-claro btn-sm" id="susCTE">📅 Agregar los últimos viernes de cada mes (Consejo Técnico) del ciclo escolar</button></div>` : ''}
+      <div class="lista-alumnos" style="margin-top:8px">${Object.entries(c.suspensiones||{}).filter(([f]) => f >= sumarDias(S.hoy,-7)).sort().map(([f,m]) => `<div class="it"><div class="n"><b>${escH(fechaLarga(f))}</b><small>${escH(m)}${f === S.hoy ? ' · <b>HOY</b>' : ''}</small></div>${adm ? `<button class="btn btn-rojo btn-sm" data-op="susQuitar" data-f="${escH(f)}">Quitar</button>` : ''}</div>`).join('') || '<div class="vacio">No hay días sin clases programados.</div>'}</div>
+    </div>
+    <div class="tarjeta">
+      <h2>✂️ Horarios alternos (recorte de módulos)</h2>
+      <div class="nota">Para días con horario reducido. Escribe un módulo por renglón (ej. <code>07:00-07:40</code>) y programa la fecha. Ese día la app usa estos módulos para saber en qué clase está cada alumno, la hora de salida y los retardos. El módulo 1 corresponde a la 1ª hora del horario normal del grupo, el 2 a la 2ª, y así sucesivamente.</div>
+      ${Object.entries(c.esquemas||{}).map(([id, e]) => `<div class="tarjeta" style="margin:10px 0;box-shadow:none" data-esq="${escH(id)}">
+        <div class="fila"><input class="campo" data-esqn="${escH(id)}" value="${escH(e.nombre||id)}" maxlength="60" ${dis}></div>
+        <div class="fila" style="margin-top:8px;align-items:flex-start">
+          ${['Matutino','Mixto'].map(t => { const ms = listaMods(e[t]); return `<div style="flex:1;min-width:200px"><b>${t}</b> <small>${ms.length} módulos · salida ${escH(ms.length ? ms[ms.length-1].fin : '—')}</small><textarea class="campo" rows="7" data-esqt="${escH(id)}|${t}" style="font-family:monospace" ${dis}>${escH(ms.map(x => x.ini+'-'+x.fin).join('\n'))}</textarea></div>`; }).join('')}
+        </div></div>`).join('')}
+      ${adm ? `<div class="acciones"><button class="btn btn-sm" id="esqGuardar">💾 Guardar horarios alternos</button><button class="btn btn-claro btn-sm" id="esqNuevo">➕ Nuevo horario alterno</button></div>` : ''}
+      <h3 style="margin:14px 0 6px">📅 Fechas programadas</h3>
+      ${adm ? `<div class="fila"><input type="date" class="campo" id="calFecha" value="${escH(S.hoy)}" style="max-width:180px"><select class="campo" id="calEsq" style="max-width:280px">${Object.entries(c.esquemas||{}).map(([id,e]) => `<option value="${escH(id)}">${escH(e.nombre||id)}</option>`).join('')}</select><button class="btn btn-sm" id="calProgramar">Programar</button></div>` : ''}
+      <div class="lista-alumnos" style="margin-top:8px">${Object.entries(c.calendario||{}).filter(([f]) => f >= sumarDias(S.hoy,-7)).sort().map(([f,id]) => `<div class="it"><div class="n"><b>${escH(fechaLarga(f))}</b><small>${escH(((c.esquemas||{})[id]||{}).nombre || id)}${f === S.hoy ? ' · <b>HOY</b>' : ''}</small></div>${adm ? `<button class="btn btn-rojo btn-sm" data-op="calQuitar" data-f="${escH(f)}">Quitar</button>` : ''}</div>`).join('') || '<div class="vacio">No hay fechas con horario alterno.</div>'}</div>
+    </div>
+    <div class="tarjeta">
       <h2>📚 Horarios de clase</h2>
       <div class="nota">Horario cargado: <b>${Object.keys(S.horarios||{}).length}</b> grupos${S.horarios === HORARIO_OFICIAL ? ` (archivo “${escH(HORARIO_OFICIAL_RAW.fuente)}”)` : ''}. Al escanear o buscar a un alumno se muestra en qué clase está; en <b>👥 Alumnos</b> se ve el horario por grupo y por maestro.</div>
       ${(() => { const sinH = gruposExistentes().filter(g => !S.horarios[claveGrupo(g)]).map(g => g.grado+'°'+g.grupo); return sinH.length ? `<div class="nota" style="color:var(--err)">Grupos de Credenciales sin horario: ${sinH.map(escH).join(', ')}</div>` : ''; })()}
@@ -1853,6 +2001,54 @@ function renderAjustes(){
   if(!adm) return;
 
   $('nuCrear').addEventListener('click', crearPrefecta);
+  $('esqGuardar').addEventListener('click', () => {
+    const upd = {}; let error = '';
+    document.querySelectorAll('[data-esq]').forEach(box => {
+      const id = box.dataset.esq, e = {nombre: box.querySelector('[data-esqn]').value.trim().slice(0,60) || 'Horario alterno'};
+      ['Matutino','Mixto'].forEach(t => {
+        const lineas = box.querySelector(`[data-esqt="${id}|${t}"]`).value.split('\n').map(x => x.trim()).filter(Boolean);
+        const ms = lineas.map(parseMod);
+        if(ms.some(x => !x)) error = `Revisa “${e.nombre}” (${t}): cada renglón debe ser como 07:00-07:40`;
+        else if(ms.some((x,i) => aMin(x.fin) <= aMin(x.ini) || (i && aMin(x.ini) < aMin(ms[i-1].fin)))) error = `Revisa “${e.nombre}” (${t}): los módulos deben ir en orden y sin encimarse`;
+        e[t] = ms.filter(Boolean).map(x => x.ini+'-'+x.fin);
+      });
+      upd[id] = e;
+    });
+    if(error){ toast(error, 'warn'); return; }
+    db.ref(ROOT+'/config/esquemas').update(upd).then(() => toast('Horarios alternos guardados')).catch(e => toast(errorFirebase(e),'err'));
+  });
+  $('esqNuevo').addEventListener('click', () => {
+    const id = 'alt' + Date.now().toString(36);
+    db.ref(ROOT+'/config/esquemas/'+id).set(Object.assign({}, ESQUEMA_RECORTE40, {nombre:'Nuevo horario alterno'})).then(() => toast('Edita los módulos y guarda')).catch(e => toast(errorFirebase(e),'err'));
+  });
+  $('susAgregar').addEventListener('click', () => {
+    const desde = $('susDesde').value, hasta = $('susHasta').value || desde;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(desde) || hasta < desde){ toast('Revisa las fechas','warn'); return; }
+    const motivo = ($('susMotivo').value + ($('susOtro').value.trim() ? ': ' + $('susOtro').value.trim() : '')).slice(0,80);
+    const upd = {}; let f = desde, n = 0;
+    while(f <= hasta && n < 120){ const d = new Date(f+'T12:00:00').getDay(); if(d !== 0 && d !== 6) upd[f] = motivo; f = sumarDias(f, 1); n++; }
+    if(!Object.keys(upd).length){ toast('Esas fechas son fin de semana','warn'); return; }
+    db.ref(ROOT+'/config/suspensiones').update(upd).then(() => toast(Object.keys(upd).length + ' día(s) sin clases agregados')).catch(e => toast(errorFirebase(e),'err'));
+  });
+  $('susCTE').addEventListener('click', () => {
+    const hoy = new Date(), y0 = hoy.getMonth() >= 7 ? hoy.getFullYear() : hoy.getFullYear() - 1;
+    const upd = {};
+    for(let i = 0; i < 10; i++){            // septiembre a junio
+      const y = y0 + (8 + i >= 12 ? 1 : 0), mes = (8 + i) % 12;
+      const d = new Date(y, mes + 1, 0, 12);  // último día del mes
+      while(d.getDay() !== 5) d.setDate(d.getDate() - 1);
+      const f = fechaLocal(d);
+      if(f >= S.hoy && !(S.config.suspensiones||{})[f]) upd[f] = 'Consejo Técnico Escolar';
+    }
+    if(!Object.keys(upd).length){ toast('Ya estaban agregados','warn'); return; }
+    if(!confirm('Se agregarán ' + Object.keys(upd).length + ' viernes de Consejo Técnico:\n' + Object.keys(upd).map(fechaLarga).join('\n') + '\n\nDespués puedes quitar cualquiera que cambie.')) return;
+    db.ref(ROOT+'/config/suspensiones').update(upd).then(() => toast('Viernes de Consejo Técnico agregados')).catch(e => toast(errorFirebase(e),'err'));
+  });
+  $('calProgramar').addEventListener('click', () => {
+    const f = $('calFecha').value, id = $('calEsq').value;
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(f) || !id) return;
+    db.ref(`${ROOT}/config/calendario/${f}`).set(id).then(() => toast('Programado para ' + fechaLarga(f))).catch(e => toast(errorFirebase(e),'err'));
+  });
   $('ajGuardar').addEventListener('click', () => {
     const horarios = JSON.parse(JSON.stringify(S.config.horarios));
     document.querySelectorAll('[data-h]').forEach(i => { const [t,k] = i.dataset.h.split('|'); horarios[t] = horarios[t] || {}; horarios[t][k] = i.value; });
@@ -1886,6 +2082,14 @@ function manejarAjustes(e){
     $('nuPass').focus(); return;
   }
   const b = e.target.closest('button[data-op]'); if(!b) return;
+  if(b.dataset.op === 'susQuitar'){
+    db.ref(`${ROOT}/config/suspensiones/${b.dataset.f}`).remove().then(() => toast('Día quitado')).catch(err => toast(errorFirebase(err),'err'));
+    return;
+  }
+  if(b.dataset.op === 'calQuitar'){
+    db.ref(`${ROOT}/config/calendario/${b.dataset.f}`).remove().then(() => toast('Fecha quitada')).catch(err => toast(errorFirebase(err),'err'));
+    return;
+  }
   if(b.dataset.op === 'xvis'){
     const t = S.tiposExtra[b.dataset.x]; if(!t) return;
     db.ref(`${ROOT}/tiposExtra/${b.dataset.x}/activo`).set(t.activo === false).catch(err => toast(errorFirebase(err),'err'));

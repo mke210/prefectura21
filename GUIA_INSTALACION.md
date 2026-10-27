@@ -93,6 +93,23 @@ Los archivos de Telegram (`functions/`, `index.js`, `package.json`, `firebase.js
   dónde está cada maestro y qué horas no tienen maestro (vacantes).
 - Los días de **Educación Física** de cada grupo ya vienen marcados según el horario.
   Al escanear, la app indica si al alumno le toca el uniforme de deportes.
+- **🔎 ¿Dónde debe estar?** (cuarto modo de escaneo): solo consulta, no registra nada.
+  Al escanear a un alumno en el pasillo dice en qué **módulo** va y qué clase y maestro le
+  tocan. Si no debería estar ahí, se toca **🚶 Fuera del salón en horario de clase**.
+- **Intento de salir antes de hora**: en modo 🏁 Salida, si el alumno aún no tiene su
+  hora (matutino 1:20, mixto 3:00, o la del horario alterno), aparece el botón
+  **🚪 No tiene permiso: levantar reporte**. Queda en su expediente y no se registra
+  la salida.
+- **✂️ Horario alterno (recorte de módulos)**: en Ajustes ya viene el de módulos de 40
+  minutos (matutino 7 módulos, mixto 5, salida 12:10). Se elige la fecha y se presiona
+  **Programar**. Ese día la app ajusta los módulos, las clases, la salida y los retardos,
+  y avisa arriba en Escanear. El módulo 1 corresponde a la 1ª hora del horario normal,
+  el 2 a la 2ª, etc. Se pueden crear otros horarios alternos.
+- **🚫 Días sin clases**: en Ajustes se agregan uno o varios días (desde–hasta) con su
+  motivo: Consejo Técnico, día festivo, suspensión oficial o vacaciones. El botón
+  **Agregar los últimos viernes de cada mes** agrega de una vez los Consejos Técnicos del
+  ciclo escolar. Cualquiera se puede quitar si cambia. Esos días la app avisa que no hay
+  clases y esas faltas no se cuentan en la asistencia del alumno.
 - **Sin credencial**: se busca por nombre en el recuadro de abajo de la cámara. El
   registro queda marcado como manual.
 - **Se sintió mal**: modo **🤒 Salida anticipada** → escanear → elegir motivo → registrar.
