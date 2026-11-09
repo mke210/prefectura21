@@ -484,6 +484,8 @@ function tiposTodos(){
   const extra = Object.entries(S.tiposExtra||{}).map(([k,v]) => ({id:'x_'+k, key:k, emoji:v.emoji||'⚠️', label:v.label, activo:v.activo!==false, origen:'extra', porNombre:v.porNombre||''}));
   return base.concat(extra.sort((x,y) => String(x.label).localeCompare(String(y.label),'es')));
 }
+/* Nombre actual de quien registró algo (si se corrigió el nombre, se muestra el corregido también en lo anterior). */
+const nombreDe = (uid, respaldo) => (uid && S.usuariosPref && S.usuariosPref[uid] && S.usuariosPref[uid].nombre) || respaldo || '';
 const tiposActivos = () => tiposTodos().filter(t => t.activo !== false);
 const tipoPorId = id => tiposTodos().find(t => t.id===id);
 
@@ -663,7 +665,7 @@ function iniciarApp(){
     escuchar(db.ref(ROOT+'/usuarios/'+S.user.uid), 'value', s => {
       const p = s.val();
       if(!p || p.activo !== true) salir('Tu acceso a Prefectura fue desactivado.');
-      else if(S.user){ S.user.esAdmin = p.rol === 'admin'; S.user.turnoDefecto = p.turno || 'Ambos'; pintarTurno(); }
+      else if(S.user){ if(p.nombre && p.nombre !== S.user.nombre){ S.user.nombre = p.nombre; $('chipUsuario').textContent = S.user.nombre + (p.rol === 'admin' ? ' · Admin' : ''); } S.user.esAdmin = p.rol === 'admin'; S.user.turnoDefecto = p.turno || 'Ambos'; pintarTurno(); }
     }, true);
   }
 
@@ -713,9 +715,7 @@ function iniciarApp(){
   escuchar(db.ref(ROOT+'/tiposExtra'), 'value', s => { S.tiposExtra = s.val() || {}; refrescarTodo(); if(vistaActual()==='ajustes') renderAjustes(); });
   escuchar(db.ref(ROOT+'/horarios'), 'value', s => { const v = s.val(); S.horarios = v && Object.keys(v).length ? v : HORARIO_OFICIAL; refrescarTodo(); });
 
-  if(esAdmin()){
-    escuchar(db.ref(ROOT+'/usuarios'), 'value', s => { S.usuariosPref = s.val() || {}; if(vistaActual()==='ajustes') renderAjustes(); });
-  }
+  escuchar(db.ref(ROOT+'/usuarios'), 'value', s => { S.usuariosPref = s.val() || {}; if(vistaActual()==='ajustes') renderAjustes(); });
 
   suscribirDia();
   if(!timerDia) timerDia = setInterval(() => { if(S.user && fechaLocal() !== S.hoy) suscribirDia(); }, 30000);
@@ -1665,10 +1665,10 @@ function abrirFalta(mat, fecha){
 function historialAlumno(mat){
   const ev = [];
   Object.entries(S.incid).forEach(([f, dia]) => Object.entries(dia||{}).forEach(([id, r]) => {
-    if(r.mat === mat) ev.push({f, hora:r.hora, clase:'Reporte', txt:(r.emoji||'')+' '+(r.label||r.tipo), det:[r.detalle, r.nota].filter(Boolean).join(' · '), por:r.porNombre, id, tipo:r.tipo});
+    if(r.mat === mat) ev.push({f, hora:r.hora, clase:'Reporte', txt:(r.emoji||'')+' '+(r.label||r.tipo), det:[r.detalle, r.nota].filter(Boolean).join(' · '), por:nombreDe(r.porUid, r.porNombre), id, tipo:r.tipo});
   }));
-  Object.entries(S.anticipadasAll).forEach(([f, dia]) => { const r = (dia||{})[mat]; if(r) ev.push({f, hora:r.hora, clase:'Salida anticipada', txt:'🤒 Salida anticipada: '+r.motivo, det:[r.recoge?'Lo recogió: '+r.recoge:'', r.nota].filter(Boolean).join(' · '), por:r.porNombre}); });
-  Object.entries(S.faltasAll).forEach(([f, dia]) => { const r = (dia||{})[mat]; if(r) ev.push({f, hora:'', clase:'Falta', txt:'🏥 Falta: '+r.motivo, det:r.nota||'', por:r.porNombre}); });
+  Object.entries(S.anticipadasAll).forEach(([f, dia]) => { const r = (dia||{})[mat]; if(r) ev.push({f, hora:r.hora, clase:'Salida anticipada', txt:'🤒 Salida anticipada: '+r.motivo, det:[r.recoge?'Lo recogió: '+r.recoge:'', r.nota].filter(Boolean).join(' · '), por:nombreDe(r.porUid, r.porNombre)}); });
+  Object.entries(S.faltasAll).forEach(([f, dia]) => { const r = (dia||{})[mat]; if(r) ev.push({f, hora:'', clase:'Falta', txt:'🏥 Falta: '+r.motivo, det:r.nota||'', por:nombreDe(r.porUid, r.porNombre)}); });
   ev.sort((x,y) => (y.f+y.hora).localeCompare(x.f+x.hora));
   return ev;
 }
@@ -1985,7 +1985,7 @@ function documentoInforme(c){
     <table><tr><th>Tipo</th><th>Cantidad</th></tr>${Object.entries(c.porTipo).sort((x,y)=>y[1]-x[1]).map(([k,v]) => `<tr><td>${escH(k)}</td><td class="n">${v}</td></tr>`).join('') || '<tr><td colspan="2">Sin reportes</td></tr>'}</table>
     <h2>Alumnos con reporte</h2>
     <table><tr><th>Alumno</th><th>Grupo</th><th>Hora</th><th>Reporte</th><th>Detalle</th><th>Registró</th></tr>
-    ${filas(c.incid.slice().sort((x,y)=>String(x.nombre).localeCompare(String(y.nombre))), r => `<tr><td>${escH(r.nombre)}</td><td>${escH((r.grado||'')+'°'+(r.grupo||''))}</td><td>${escH(r.hora)}</td><td>${escH(r.label)}</td><td>${escH([r.detalle,r.nota].filter(Boolean).join(' · '))}</td><td>${escH(r.porNombre||'')}</td></tr>`)}</table>
+    ${filas(c.incid.slice().sort((x,y)=>String(x.nombre).localeCompare(String(y.nombre))), r => `<tr><td>${escH(r.nombre)}</td><td>${escH((r.grado||'')+'°'+(r.grupo||''))}</td><td>${escH(r.hora)}</td><td>${escH(r.label)}</td><td>${escH([r.detalle,r.nota].filter(Boolean).join(' · '))}</td><td>${escH(nombreDe(r.porUid, r.porNombre))}</td></tr>`)}</table>
     <h2>Reincidentes (${S.config.reincidencia.n} o más reportes en ${S.config.reincidencia.dias} días)</h2>
     <table><tr><th>Alumno</th><th>Grupo</th><th>Reportes</th><th>Tipos</th></tr>
     ${filas(c.reinc, x => `<tr><td>${escH(x.a.nombre)}</td><td>${escH(grupoDe(x.a))}</td><td class="n">${x.n}</td><td>${escH(Object.entries(x.tipos).map(([k,v])=>k+' ('+v+')').join(', '))}</td></tr>`)}</table>
@@ -2019,7 +2019,7 @@ function documentoDetalles(c){
     ${Object.keys(grupos).length ? Object.entries(grupos).map(([g, fs]) => `
       <h2>Grupo ${escH(g)} · ${escH(fs[0].a.turno||'')} <span style="font-weight:400">(${fs.length} alumno${fs.length>1?'s':''})</span></h2>
       <table><tr><th>#</th><th>Alumno</th><th>Matrícula</th><th>Entrada</th><th>Detalles</th><th>Observaciones</th><th>Registró</th></tr>
-      ${fs.map((f, i) => `<tr><td class="n">${i+1}</td><td>${escH(f.a.nombre)}</td><td>${escH(f.mat)}</td><td>${f.ent ? escH(f.ent.hora) + (f.ent.retardo ? ' ⏰ retardo' : '') : 'Sin entrada registrada'}</td><td>${f.rs.map(r => escH((r.emoji ? r.emoji + ' ' : '') + (r.label||r.tipo))).join('<br>')}</td><td>${f.rs.map(r => escH([r.detalle, r.nota].filter(Boolean).join(' · '))).filter(Boolean).join('<br>')}</td><td>${escH([...new Set(f.rs.map(r => r.porNombre).filter(Boolean))].join(', '))}</td></tr>`).join('')}
+      ${fs.map((f, i) => `<tr><td class="n">${i+1}</td><td>${escH(f.a.nombre)}</td><td>${escH(f.mat)}</td><td>${f.ent ? escH(f.ent.hora) + (f.ent.retardo ? ' ⏰ retardo' : '') : 'Sin entrada registrada'}</td><td>${f.rs.map(r => escH((r.emoji ? r.emoji + ' ' : '') + (r.label||r.tipo))).join('<br>')}</td><td>${f.rs.map(r => escH([r.detalle, r.nota].filter(Boolean).join(' · '))).filter(Boolean).join('<br>')}</td><td>${escH([...new Set(f.rs.map(r => nombreDe(r.porUid, r.porNombre)).filter(Boolean))].join(', '))}</td></tr>`).join('')}
       </table>`).join('') : '<p>Ningún alumno tuvo detalles este día. 👍</p>'}
     <p style="font-size:11px">${conEntrada} de ${filas.length} alumnos con detalles tienen entrada registrada.</p>
     <div class="firmas"><div>${escH(S.config.responsable||'Prefectura')}<br>Prefectura</div><div>Vo. Bo. Dirección</div></div>
@@ -2097,6 +2097,7 @@ function renderAjustes(){
           <select class="campo" data-turno-u="${escH(uid)}" style="max-width:150px;padding:6px 8px" title="Turno asignado">${opsTurno(u.turno||'Ambos')}</select>
           <button class="btn btn-claro btn-sm" data-u="${escH(uid)}" data-op="activo" data-want="${u.activo?'0':'1'}">${u.activo?'Desactivar':'Activar'}</button>
           <button class="btn btn-claro btn-sm" data-u="${escH(uid)}" data-op="rol" data-want="${u.rol==='admin'?'prefecta':'admin'}">${u.rol==='admin'?'Hacer prefecta/o':'Hacer admin'}</button>
+          <button class="btn btn-claro btn-sm" data-u="${escH(uid)}" data-op="nombre">✏️ Nombre</button>
           <button class="btn btn-rojo btn-sm" data-u="${escH(uid)}" data-op="quitar">Quitar acceso</button></div>`).join('') : '<div class="vacio">Aún no hay prefectas dadas de alta.</div>'}
       </div>
     </div>` : ''}
@@ -2335,7 +2336,7 @@ function registrarCambio(area, clave, accion){
     if(!avisoBitacora){ avisoBitacora = true; toast('El cambio se guardó, pero no quedó en la bitácora: falta publicar las reglas nuevas de Firebase.', 'warn'); }
   });
 }
-const listaBitacora = () => Object.entries(S.bitacora||{}).map(([id,e]) => Object.assign({id}, e)).sort((a,b) => (b.ts||0) - (a.ts||0));
+const listaBitacora = () => Object.entries(S.bitacora||{}).map(([id,e]) => Object.assign({id}, e, {porNombre: nombreDe(e.porUid, e.porNombre)})).sort((a,b) => (b.ts||0) - (a.ts||0));
 const ultimoCambio = clave => listaBitacora().find(e => e.clave === clave) || null;
 const ultimoCambioArea = area => listaBitacora().find(e => e.area === area) || null;
 const horaDeTs = ts => { const d = new Date(ts); return pad(d.getHours()) + ':' + pad(d.getMinutes()); };
@@ -2415,6 +2416,29 @@ $('ajContenido').addEventListener('change', e => {
     .then(() => { toast('Turno de ' + (u ? (u.nombre||u.usuario) : '') + ': ' + (s.value === 'Ambos' ? 'ambos turnos' : s.value)); registrarCambio('Prefectas', 'usuario.' + uid + '.turno', 'Cambió el turno de ' + (u ? (u.nombre||u.usuario) : '') + ': ' + antes + ' → ' + s.value); })
     .catch(err => toast(errorFirebase(err),'err'));
 });
+function editarNombrePrefecta(uid){
+  const u = S.usuariosPref[uid]; if(!u) return;
+  const capa = abrirHoja(cabHoja('✏️ Corregir nombre', 'Usuario para entrar: ' + escH(u.usuario||'')) + `
+    <div class="nota">Nombre como aparecerá en la app, en los reportes y en la bitácora (también en los registros que ya hizo).</div>
+    <input class="campo" id="enNombre" maxlength="60" value="${escH(u.nombre||'')}">
+    <div class="nota" style="margin-top:8px">El usuario para entrar (<b>${escH(u.usuario||'')}</b>) y su contraseña no cambian.</div>
+    <div class="acciones"><button class="btn" id="enOk" style="flex:1;justify-content:center">Guardar nombre</button></div>`);
+  const inp = capa.querySelector('#enNombre');
+  setTimeout(() => { inp.focus(); inp.select(); }, 50);
+  const guardar = () => {
+    const nuevo = inp.value.trim().replace(/\s+/g,' ').slice(0,60);
+    const actual = (S.usuariosPref[uid]||{}).nombre || '';
+    if(nuevo.length < 2){ toast('Escribe el nombre','warn'); return; }
+    if(nuevo === actual){ yaHecho('usuario.' + uid + '.nombre', 'El nombre ya está escrito así'); capa.remove(); return; }
+    db.ref(`${ROOT}/usuarios/${uid}/nombre`).set(nuevo).then(() => {
+      toast('Nombre corregido: ' + nuevo);
+      registrarCambio('Prefectas', 'usuario.' + uid + '.nombre', 'Corrigió el nombre: ' + actual + ' → ' + nuevo);
+      capa.remove();
+    }).catch(err => toast(errorFirebase(err),'err'));
+  };
+  capa.querySelector('#enOk').addEventListener('click', guardar);
+  inp.addEventListener('keydown', e => { if(e.key === 'Enter') guardar(); });
+}
 function manejarAjustes(e){
   const sug = e.target.closest('button[data-sug]');
   if(sug){
@@ -2455,6 +2479,7 @@ function manejarAjustes(e){
   const u = S.usuariosPref[uid];
   const nom = u ? (u.nombre||u.usuario) : '';
   if(!u){ yaHecho('usuario.' + uid + '.acceso', 'A esa persona ya se le había quitado el acceso'); renderAjustes(); return; }
+  if(b.dataset.op === 'nombre'){ editarNombrePrefecta(uid); return; }
   if(uid === S.user.uid && b.dataset.op !== 'rol'){ toast('No puedes desactivar tu propia cuenta','warn'); return; }
   if(b.dataset.op === 'activo'){
     const quiere = want === '1';
